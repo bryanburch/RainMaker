@@ -4,6 +4,7 @@ import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.Group;
 import javafx.scene.Scene;
+import javafx.scene.control.Dialog;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.Pane;
@@ -225,11 +226,11 @@ class Game extends Pane {
     }
 
     public void handleIKeyPressed() {
-        System.out.println("I");
+        helicopter.toggleIgnition();
     }
 
     public void handleRKeyPressed() {
-        System.out.println("R");
+        init();
     }
 
     public void handleBKeyPressed() {
@@ -430,10 +431,11 @@ class Helicopter extends GameObject implements Updatable {
     private Circle bodyCircle;
     private Line headingLine;
     private GameText fuelGauge;
-    private double heading = 0;
-    private double speed = 0;
+    private double heading;
+    private double speed;
     private Point2D position;
     private int fuel;
+    private boolean isActive;
     private Rectangle bounds;
     private boolean showBounds;
 
@@ -442,8 +444,11 @@ class Helicopter extends GameObject implements Updatable {
         makeFuelGauge(fuel);
         this.getChildren().addAll(bodyCircle, headingLine, fuelGauge);
 
+        this.heading = 0;
+        this.speed = 0;
         this.fuel = fuel;
         this.position = position;
+        this.isActive = false;
 
         this.getTransforms().add(new Translate(position.getX(),
                 position.getY()));
@@ -480,9 +485,9 @@ class Helicopter extends GameObject implements Updatable {
 
     @Override
     public void update(double delta) {
-        Point2D newPosition =
-                new Point2D(position.getX() + (Math.sin(Math.toRadians(heading)) * speed),
-                        position.getY() + (Math.cos(Math.toRadians(heading)) * speed));
+        Point2D newPosition = new Point2D(
+                position.getX() + (Math.sin(Math.toRadians(heading)) * speed),
+                position.getY() + (Math.cos(Math.toRadians(heading)) * speed));
 
         position = newPosition;
 
@@ -493,6 +498,16 @@ class Helicopter extends GameObject implements Updatable {
 
         // Bounding box work
         updateBoundingBox();
+
+        if (isActive) {
+            if (fuel <= 0) {
+                fuel = 0;
+                fuelGauge.setText("F:" + fuel);
+            } else {
+                fuel -= Math.abs(speed) + 5;
+                fuelGauge.setText("F:" + fuel);
+            }
+        }
     }
 
     private void updateBoundingBox() {
@@ -513,21 +528,28 @@ class Helicopter extends GameObject implements Updatable {
         this.getChildren().add(bounds);
     }
 
+    public void toggleIgnition() {
+        if (Math.abs(speed) < 1e-3)
+            isActive = !isActive;
+    }
+
     public void turnLeft() {
-        heading -= 15;
+        if (isActive && Math.abs(speed) > 1e-3)
+            heading -= 15;
     }
 
     public void turnRight() {
-        heading += 15;
+        if (isActive && Math.abs(speed) > 1e-3)
+            heading += 15;
     }
 
     public void increaseSpeed() {
-        if (speed < Game.HELICOPTER_MAX_SPEED)
+        if (isActive && speed < Game.HELICOPTER_MAX_SPEED)
             speed += 0.1;
     }
 
     public void decreaseSpeed() {
-        if (speed > Game.HELICOPTER_MIN_SPEED)
+        if (isActive && speed > Game.HELICOPTER_MIN_SPEED)
             speed -= 0.1;
     }
 
@@ -538,6 +560,10 @@ class Helicopter extends GameObject implements Updatable {
 
     public Rectangle getBoundingBox() {
         return bounds;
+    }
+
+    public boolean hasFuel() {
+        return fuel > 0;
     }
 }
 
