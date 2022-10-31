@@ -1,3 +1,4 @@
+import javafx.animation.AnimationTimer;
 import javafx.application.Application;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
@@ -11,6 +12,7 @@ import javafx.scene.shape.Circle;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Text;
+import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
 
@@ -19,14 +21,32 @@ import javafx.stage.Stage;
  * handlers that invoke Game class methods.
  */
 public class GameApp extends Application {
+    private Game game;
+    private Scene scene;
+    
     @Override
     public void start(Stage primaryStage) throws Exception {
-        Game game = new Game();
-        Scene scene = new Scene(game, Game.GAME_WIDTH, Game.GAME_HEIGHT);
+        game = new Game();
+        scene = new Scene(game, Game.GAME_WIDTH, Game.GAME_HEIGHT);
         primaryStage.setScene(scene);
+        setupEventHandlers();
         primaryStage.setResizable(false);
         primaryStage.setTitle("RainMaker");
         primaryStage.show();
+    }
+
+    private void setupEventHandlers() {
+        scene.setOnKeyPressed(e -> {
+            switch(e.getCode()) {
+                case LEFT -> game.handleLeftKeyPressed();
+                case RIGHT -> game.handleRightKeyPressed();
+                case UP -> game.handleUpKeyPressed();
+                case DOWN -> game.handleDownKeyPressed();
+                case I -> game.handleIKeyPressed();
+                case R -> game.handleRKeyPressed();
+                case B -> game.handleBKeyPressed();
+            }
+        });
     }
 }
 
@@ -58,6 +78,11 @@ class Game extends Pane {
 
     final static Color HELICOPTER_COLOR = Color.YELLOW;
     final static Point2D HELICOPTER_START = new Point2D(200, 70);
+    final static int HELICOPTER_MAX_SPEED = 10;
+    final static int HELICOPTER_MIN_SPEED = -2;
+    final static int HELICOPTER_START_FUEL = 25000;
+
+    final static double NANOS_PER_SEC = 1e9;
 
     private Pond pond;
     private Cloud cloud;
@@ -81,6 +106,7 @@ class Game extends Pane {
                 , null, null)));
         this.setScaleY(-1);
         init();
+        startGameLoop();
     }
 
     /**
@@ -100,16 +126,14 @@ class Game extends Pane {
     }
 
     private static Helicopter makeHelicopter() {
-        Helicopter helicopter = new Helicopter();
-        helicopter.setTranslateX(HELICOPTER_START.getX());
-        helicopter.setTranslateY(HELICOPTER_START.getY());
+        Helicopter helicopter = new Helicopter(HELICOPTER_START_FUEL, HELICOPTER_START);
+//        helicopter.setTranslateX(HELICOPTER_START.getX());
+//        helicopter.setTranslateY(HELICOPTER_START.getY());
         return helicopter;
     }
 
     private static Helipad makeHelipad() {
         Helipad helipad = new Helipad(HELIPAD_SIZE);
-        helipad.setTranslateX(HELIPAD_POSITION.getX());
-        helipad.setTranslateY(HELIPAD_POSITION.getY());
         return helipad;
     }
 
@@ -133,6 +157,56 @@ class Game extends Pane {
         pond.setTranslateX(position.getX());
         pond.setTranslateY(position.getY());
         return pond;
+    }
+
+    private void startGameLoop() {
+        AnimationTimer loop = new AnimationTimer() {
+            double old = -1;
+
+            @Override
+            public void handle(long now) {
+                double delta = calculateDelta(now);
+
+                helicopter.update(delta);
+            }
+
+            private double calculateDelta(long now) {
+                if (old < 0)
+                    old = now;
+                double delta = (now - old) / NANOS_PER_SEC;
+                old = now;
+                return delta;
+            }
+        };
+        loop.start();
+    }
+
+    public void handleLeftKeyPressed() {
+        helicopter.turnLeft();
+    }
+
+    public void handleRightKeyPressed() {
+        helicopter.turnRight();
+    }
+
+    public void handleUpKeyPressed() {
+        helicopter.increaseSpeed();
+    }
+
+    public void handleDownKeyPressed() {
+        helicopter.decreaseSpeed();
+    }
+
+    public void handleIKeyPressed() {
+        System.out.println("I");
+    }
+
+    public void handleRKeyPressed() {
+        System.out.println("R");
+    }
+
+    public void handleBKeyPressed() {
+        System.out.println("B");
     }
 }
 
@@ -171,7 +245,7 @@ class Pond extends GameObject implements Updatable {
     }
 
     @Override
-    public void update() {
+    public void update(double delta) {
 
     }
 }
@@ -200,7 +274,7 @@ class Cloud extends GameObject implements Updatable {
     }
 
     @Override
-    public void update() {
+    public void update(double delta) {
 
     }
 }
@@ -228,6 +302,9 @@ class Helipad extends GameObject {
         circle.setTranslateY(circle.getTranslateY() + size.getY() / 2);
 
         this.getChildren().addAll(rectangle, circle);
+
+        this.getTransforms().add(new Translate(Game.HELIPAD_POSITION.getX(),
+                Game.HELIPAD_POSITION.getY()));
     }
 
 }
@@ -239,32 +316,74 @@ class Helipad extends GameObject {
  * displayed below body to start and rotates with change in heading.
  */
 class Helicopter extends GameObject implements Updatable {
-    Circle bodyCircle;
-    Line headingLine;
-    GameText fuelGauge;
-    double heading = 0;
-    double speed = 0;
-    int fuel = 25000; // should be grabbed from Game class
-    final static int maxSpeed = 10;
-    final static int minSpeed = -2;
+    // TODO: derive helicopter size from screen dimensions
     final static int HEADING_LENGTH = 30;
+    private Circle bodyCircle;
+    private Line headingLine;
+    private GameText fuelGauge;
+    private double heading = 0;
+    private double speed = 0;
+    private Point2D position;
+    private int fuel;
 
-    public Helicopter() {
+    public Helicopter(int fuel, Point2D position) {
+        makeHelicopterShape();
+        makeFuelGauge(fuel);
+        this.getChildren().addAll(bodyCircle, headingLine, fuelGauge);
+
+        this.fuel = fuel;
+        this.position = position;
+
+//        this.setTranslateX(position.getX());
+//        this.setTranslateY(position.getY());
+        this.getTransforms().add(new Translate(position.getX(),
+                position.getY()));
+        System.out.println(this.getBoundsInParent());
+    }
+
+    private void makeFuelGauge(int fuel) {
+        fuelGauge = new GameText("F:" + fuel, Game.HELICOPTER_COLOR);
+        fuelGauge.setTranslateY(-15);
+        fuelGauge.setTranslateX(-25);
+    }
+
+    private void makeHelicopterShape() {
         bodyCircle = new Circle(10, Game.HELICOPTER_COLOR);
         headingLine = new Line(0, 0, 0, HEADING_LENGTH);
         headingLine.setStrokeWidth(2);
         headingLine.setStroke(Game.HELICOPTER_COLOR);
-
-        fuelGauge = new GameText("F:" + fuel, Game.HELICOPTER_COLOR);
-        fuelGauge.setTranslateY(-15);
-        fuelGauge.setTranslateX(-25);
-
-        this.getChildren().addAll(bodyCircle, headingLine, fuelGauge);
     }
 
     @Override
-    public void update() {
+    public void update(double delta) {
+        Point2D newPosition =
+                new Point2D(position.getX() + (Math.sin(Math.toRadians(heading)) * speed),
+                        position.getY() + (Math.cos(Math.toRadians(heading)) * speed));
 
+        position = newPosition;
+
+        this.getTransforms().clear();
+        this.getTransforms().addAll(
+                new Translate(position.getX(), position.getY()),
+                new Rotate(-heading));
+    }
+
+    public void turnLeft() {
+        heading -= 15;
+    }
+
+    public void turnRight() {
+        heading += 15;
+    }
+
+    public void increaseSpeed() {
+        if (speed < Game.HELICOPTER_MAX_SPEED)
+            speed += 0.1;
+    }
+
+    public void decreaseSpeed() {
+        if (speed > Game.HELICOPTER_MIN_SPEED)
+            speed -= 0.1;
     }
 }
 
@@ -273,7 +392,7 @@ class Helicopter extends GameObject implements Updatable {
  * will be updated from the main game timer.
  */
 interface Updatable {
-    void update();
+    void update(double delta);
 
 }
 
