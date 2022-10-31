@@ -11,6 +11,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.shape.Shape;
 import javafx.scene.text.Text;
 import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Translate;
@@ -42,6 +43,7 @@ public class GameApp extends Application {
                 case RIGHT -> game.handleRightKeyPressed();
                 case UP -> game.handleUpKeyPressed();
                 case DOWN -> game.handleDownKeyPressed();
+                case SPACE -> game.handleSpaceKeyPressed();
                 case I -> game.handleIKeyPressed();
                 case R -> game.handleRKeyPressed();
                 case B -> game.handleBKeyPressed();
@@ -88,6 +90,7 @@ class Game extends Pane {
     private Cloud cloud;
     private Helipad helipad;
     private Helicopter helicopter;
+    private boolean allowSeeding;
 
     public static double randomInRange(double min, double max) {
         return (Math.random() * (max - min) + min);
@@ -95,8 +98,6 @@ class Game extends Pane {
 
     public static Point2D randomPositionInBound(
             Point2D lowerLeft, Point2D upperRight) {
-        // min = (0, 0)
-        // max = (GAME_WIDTH, GAME_HEIGHT)
         return new Point2D(randomInRange(lowerLeft.getX(), upperRight.getX()),
                 randomInRange(lowerLeft.getY(), upperRight.getY()));
     }
@@ -126,9 +127,8 @@ class Game extends Pane {
     }
 
     private static Helicopter makeHelicopter() {
-        Helicopter helicopter = new Helicopter(HELICOPTER_START_FUEL, HELICOPTER_START);
-//        helicopter.setTranslateX(HELICOPTER_START.getX());
-//        helicopter.setTranslateY(HELICOPTER_START.getY());
+        Helicopter helicopter = new Helicopter(HELICOPTER_START_FUEL,
+                HELICOPTER_START);
         return helicopter;
     }
 
@@ -162,12 +162,35 @@ class Game extends Pane {
     private void startGameLoop() {
         AnimationTimer loop = new AnimationTimer() {
             double old = -1;
+            double secondTimer = 0;
 
             @Override
             public void handle(long now) {
                 double delta = calculateDelta(now);
+                secondTimer += delta;
 
                 helicopter.update(delta);
+                checkForSeeding();
+
+                if (secondTimer >= 0.7) {
+                    checkForRain();
+                    secondTimer = 0;
+                }
+            }
+
+            private void checkForRain() {
+                if (cloud.rain()) {
+                    pond.fill();
+                }
+            }
+
+            private void checkForSeeding() {
+                if (!Shape.intersect(helicopter.getBoundingBox(),
+                        cloud.getBoundingBox()).getBoundsInLocal().isEmpty() &&
+                        allowSeeding) {
+                    cloud.seed();
+                }
+                allowSeeding = false;
             }
 
             private double calculateDelta(long now) {
@@ -197,6 +220,10 @@ class Game extends Pane {
         helicopter.decreaseSpeed();
     }
 
+    public void handleSpaceKeyPressed() {
+        allowSeeding = true;
+    }
+
     public void handleIKeyPressed() {
         System.out.println("I");
     }
@@ -206,7 +233,9 @@ class Game extends Pane {
     }
 
     public void handleBKeyPressed() {
-        System.out.println("B");
+        cloud.toggleBoundingBox();
+        helipad.toggleBoundingBox();
+        helicopter.toggleBoundingBox();
     }
 }
 
@@ -226,14 +255,15 @@ class Pond extends GameObject implements Updatable {
     private Circle pondCircle;
     private double maxRadius, currentRadius;
     private GameText percentFullText;
+    private int percentFull;
 
     public Pond(double maxRadius, double currentRadius) {
         this.maxRadius = maxRadius;
         this.currentRadius = currentRadius;
         pondCircle = new Circle(currentRadius, Game.POND_COLOR);
 
-        percentFullText = new GameText(
-                (int) (( currentRadius / maxRadius) * 100) + "%",
+        percentFull = (int) ((currentRadius / maxRadius) * 100);
+        percentFullText = new GameText(percentFull + "%",
                 Game.POND_TEXT_COLOR);
         Bounds fpBounds = percentFullText.getBoundsInParent();
         percentFullText.setTranslateX(
@@ -248,6 +278,18 @@ class Pond extends GameObject implements Updatable {
     public void update(double delta) {
 
     }
+
+    public void fill() {
+        if (percentFull < 100) {
+            double newRadius = calcNextRadiusForPercent(++percentFull);
+            pondCircle.setRadius(newRadius);
+            percentFullText.setText(percentFull + "%");
+        }
+    }
+
+    private double calcNextRadiusForPercent(int percent) {
+        return (maxRadius * ((double) percent / 100));
+    }
 }
 
 /**
@@ -257,12 +299,16 @@ class Pond extends GameObject implements Updatable {
 class Cloud extends GameObject implements Updatable {
     private Circle cloudCircle;
     private GameText percentSaturatedText;
+    private int seedPercentage;
+    private Rectangle bounds;
+    private boolean showBounds;
 
     public Cloud(double radius) {
         cloudCircle = new Circle(radius, Game.CLOUD_COLOR);
 
+        seedPercentage = 0;
         percentSaturatedText =
-                new GameText("0%", Game.CLOUD_TEXT_COLOR);
+                new GameText(seedPercentage + "%", Game.CLOUD_TEXT_COLOR);
         Bounds fpBounds = percentSaturatedText.getBoundsInParent();
         percentSaturatedText.setTranslateX(
                 percentSaturatedText.getTranslateX()
@@ -271,11 +317,55 @@ class Cloud extends GameObject implements Updatable {
                 + fpBounds.getHeight() / 2);
 
         this.getChildren().addAll(cloudCircle, percentSaturatedText);
+
+        // Bounding box work
+        bounds = new Rectangle(this.getBoundsInParent().getWidth(),
+                this.getBoundsInParent().getHeight());
+        bounds.setTranslateX(bounds.getTranslateX() - bounds.getWidth() / 2);
+        bounds.setTranslateY(bounds.getTranslateY() - bounds.getHeight() / 2);
+        bounds.setFill(Color.TRANSPARENT);
+        bounds.setStrokeWidth(1);
+        bounds.setStroke(Color.YELLOW);
+        bounds.setVisible(false);
+        this.getChildren().add(bounds);
     }
 
     @Override
     public void update(double delta) {
 
+    }
+
+    public void toggleBoundingBox() {
+        showBounds = !showBounds;
+        bounds.setVisible(showBounds);
+    }
+
+    public Rectangle getBoundingBox() {
+        return bounds;
+    }
+
+    public void seed() {
+        if (seedPercentage < 100) {
+            seedPercentage++;
+            percentSaturatedText.setText(seedPercentage + "%");
+            int red = (int) (255 * ((Color) cloudCircle.getFill()).getRed());
+            int green = (int) (255 * ((Color) cloudCircle.getFill()).getGreen());
+            int blue = (int) (255 * ((Color) cloudCircle.getFill()).getBlue());
+            cloudCircle.setFill(Color.rgb(--red, --green, --blue));
+        }
+    }
+
+    public boolean rain() {
+        if (seedPercentage >= 30) {
+            seedPercentage--;
+            percentSaturatedText.setText(seedPercentage + "%");
+            int red = (int) (255 * ((Color) cloudCircle.getFill()).getRed());
+            int green = (int) (255 * ((Color) cloudCircle.getFill()).getGreen());
+            int blue = (int) (255 * ((Color) cloudCircle.getFill()).getBlue());
+            cloudCircle.setFill(Color.rgb(++red, ++green, ++blue));
+            return true;
+        }
+        return false;
     }
 }
 
@@ -289,6 +379,8 @@ class Cloud extends GameObject implements Updatable {
 class Helipad extends GameObject {
     private Rectangle rectangle;
     private Circle circle;
+    private Rectangle bounds;
+    private boolean showBounds;
 
     public Helipad(Point2D size) {
         rectangle = new Rectangle(size.getX(), size.getY());
@@ -305,6 +397,23 @@ class Helipad extends GameObject {
 
         this.getTransforms().add(new Translate(Game.HELIPAD_POSITION.getX(),
                 Game.HELIPAD_POSITION.getY()));
+
+        // Bounding box work
+        bounds = new Rectangle(rectangle.getWidth(), rectangle.getHeight());
+        bounds.setFill(Color.TRANSPARENT);
+        bounds.setStroke(Color.YELLOW);
+        bounds.setStrokeWidth(1);
+        bounds.setVisible(false);
+        this.getChildren().add(bounds);
+    }
+
+    public void toggleBoundingBox() {
+        showBounds = !showBounds;
+        bounds.setVisible(showBounds);
+    }
+
+    public Rectangle getBoundingBox() {
+        return bounds;
     }
 
 }
@@ -325,6 +434,8 @@ class Helicopter extends GameObject implements Updatable {
     private double speed = 0;
     private Point2D position;
     private int fuel;
+    private Rectangle bounds;
+    private boolean showBounds;
 
     public Helicopter(int fuel, Point2D position) {
         makeHelicopterShape();
@@ -334,11 +445,24 @@ class Helicopter extends GameObject implements Updatable {
         this.fuel = fuel;
         this.position = position;
 
-//        this.setTranslateX(position.getX());
-//        this.setTranslateY(position.getY());
         this.getTransforms().add(new Translate(position.getX(),
                 position.getY()));
-        System.out.println(this.getBoundsInParent());
+
+        // Bounding box work
+        setupBoundingBox();
+    }
+
+    private void setupBoundingBox() {
+        bounds = new Rectangle(this.getBoundsInParent().getWidth(),
+                this.getBoundsInParent().getHeight());
+        bounds.getTransforms().add(
+                new Translate((-bounds.getWidth() / 2),
+                        (-bounds.getHeight() / 2) ));
+        bounds.setFill(Color.TRANSPARENT);
+        bounds.setStrokeWidth(1);
+        bounds.setStroke(Color.YELLOW);
+        bounds.setVisible(false);
+        this.getChildren().add(bounds);
     }
 
     private void makeFuelGauge(int fuel) {
@@ -366,6 +490,27 @@ class Helicopter extends GameObject implements Updatable {
         this.getTransforms().addAll(
                 new Translate(position.getX(), position.getY()),
                 new Rotate(-heading));
+
+        // Bounding box work
+        updateBoundingBox();
+    }
+
+    private void updateBoundingBox() {
+        this.getChildren().remove(bounds);
+
+//        System.out.println("Width: " + this.getBoundsInParent().getWidth() +
+//                ", Height: " + this.getBoundsInParent().getHeight());
+        bounds.setWidth(this.getBoundsInParent().getWidth());
+        bounds.setHeight(this.getBoundsInParent().getHeight());
+        bounds.getTransforms().clear();
+        bounds.getTransforms().add(
+                new Translate((-bounds.getWidth() / 2),
+                        (-bounds.getHeight() / 2) ));
+        bounds.getTransforms().add(new Rotate(heading,
+                this.getBoundsInParent().getWidth() / 2,
+                this.getBoundsInParent().getHeight() / 2));
+
+        this.getChildren().add(bounds);
     }
 
     public void turnLeft() {
@@ -384,6 +529,15 @@ class Helicopter extends GameObject implements Updatable {
     public void decreaseSpeed() {
         if (speed > Game.HELICOPTER_MIN_SPEED)
             speed -= 0.1;
+    }
+
+    public void toggleBoundingBox() {
+        showBounds = !showBounds;
+        bounds.setVisible(showBounds);
+    }
+
+    public Rectangle getBoundingBox() {
+        return bounds;
     }
 }
 
@@ -409,6 +563,10 @@ class GameText extends GameObject {
 
         this.setScaleY(-1);
         this.getChildren().add(text);
+    }
+
+    public void setText(String string) {
+        text.setText(string);
     }
 
 }
