@@ -1,10 +1,12 @@
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.Group;
 import javafx.scene.Scene;
-import javafx.scene.control.Dialog;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.Pane;
@@ -17,6 +19,8 @@ import javafx.scene.text.Text;
 import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
+
+import java.util.Optional;
 
 /**
  * Manages high-level stuff and initializes/shows scene. Sets up key event
@@ -92,6 +96,7 @@ class Game extends Pane {
     private Helipad helipad;
     private Helicopter helicopter;
     private boolean allowSeeding;
+    private AnimationTimer loop;
 
     public static double randomInRange(double min, double max) {
         return (Math.random() * (max - min) + min);
@@ -108,7 +113,6 @@ class Game extends Pane {
                 , null, null)));
         this.setScaleY(-1);
         init();
-        startGameLoop();
     }
 
     /**
@@ -125,6 +129,9 @@ class Game extends Pane {
         this.helicopter = makeHelicopter();
 
         this.getChildren().addAll(pond, cloud, helipad, helicopter);
+
+        loop = makeGameLoop();
+        loop.start();
     }
 
     private static Helicopter makeHelicopter() {
@@ -160,10 +167,10 @@ class Game extends Pane {
         return pond;
     }
 
-    private void startGameLoop() {
+    private AnimationTimer makeGameLoop() {
         AnimationTimer loop = new AnimationTimer() {
-            double old = -1;
-            double secondTimer = 0;
+            private double old = -1;
+            private double secondTimer = 0;
 
             @Override
             public void handle(long now) {
@@ -176,6 +183,62 @@ class Game extends Pane {
                 if (secondTimer >= 0.7) {
                     checkForRain();
                     secondTimer = 0;
+                }
+
+                ifNoFuelShowLoseDialog();
+                ifPondFilledAndLandedShowWinDialog();
+            }
+
+            private void ifPondFilledAndLandedShowWinDialog() {
+                if (hasMetWinConditions()) {
+                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                            "You have won! Play again?");
+                    alert.setTitle("Confirmation");
+                    alert.setHeaderText("Confirmation");
+
+                    ButtonType yesButton = new ButtonType("Yes");
+                    ButtonType noButton = new ButtonType("No");
+                    alert.getButtonTypes().setAll(yesButton, noButton);
+
+                    Platform.runLater(() -> {
+                        Optional<ButtonType> result = alert.showAndWait();
+                        System.out.println(result);
+                        if (result.get() == yesButton)
+                            init();
+                        else if (result.get() == noButton)
+                            Platform.exit();
+                    });
+                    this.stop();
+                }
+            }
+
+            private boolean hasMetWinConditions() {
+                return pond.isFull() && helicopter.hasFuel() &&
+                    !helicopter.isEngineOn() && !Shape.intersect(
+                        helicopter.getBoundingBox(), helipad.getBoundingBox()).
+                        getBoundsInLocal().isEmpty();
+            }
+
+            private void ifNoFuelShowLoseDialog() {
+                if (!helicopter.hasFuel()) {
+                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                            "You have lost! Play again?");
+                    alert.setTitle("Confirmation");
+                    alert.setHeaderText("Confirmation");
+
+                    ButtonType yesButton = new ButtonType("Yes");
+                    ButtonType noButton = new ButtonType("No");
+                    alert.getButtonTypes().setAll(yesButton, noButton);
+
+                    Platform.runLater(() -> {
+                        Optional<ButtonType> result = alert.showAndWait();
+                        System.out.println(result);
+                        if (result.get() == yesButton)
+                            init();
+                        else if (result.get() == noButton)
+                            Platform.exit();
+                    });
+                    this.stop();
                 }
             }
 
@@ -202,7 +265,7 @@ class Game extends Pane {
                 return delta;
             }
         };
-        loop.start();
+        return loop;
     }
 
     public void handleLeftKeyPressed() {
@@ -277,7 +340,7 @@ class Pond extends GameObject implements Updatable {
 
     @Override
     public void update(double delta) {
-
+        // TODO
     }
 
     public void fill() {
@@ -290,6 +353,10 @@ class Pond extends GameObject implements Updatable {
 
     private double calcNextRadiusForPercent(int percent) {
         return (maxRadius * ((double) percent / 100));
+    }
+
+    public boolean isFull() {
+        return percentFull >= 100;
     }
 }
 
@@ -333,7 +400,7 @@ class Cloud extends GameObject implements Updatable {
 
     @Override
     public void update(double delta) {
-
+        // TODO
     }
 
     public void toggleBoundingBox() {
@@ -564,6 +631,10 @@ class Helicopter extends GameObject implements Updatable {
 
     public boolean hasFuel() {
         return fuel > 0;
+    }
+
+    public boolean isEngineOn() {
+        return isActive;
     }
 }
 
