@@ -293,6 +293,8 @@ class Game extends Pane {
     }
 
     public void handleRKeyPressed() {
+        loop.stop();
+        System.out.println("R key pressed!");
         init();
     }
 
@@ -495,52 +497,32 @@ class Helipad extends GameObject {
 class Helicopter extends GameObject implements Updatable {
     // TODO: derive helicopter size from screen dimensions
     final static int HEADING_LENGTH = 30;
+    final static int FUEL_CONSUMPTION_RATE = 5;
     private Circle bodyCircle;
     private Line headingLine;
     private GameText fuelGauge;
+    private Rectangle bounds;
+    private Point2D position;
     private double heading;
     private double speed;
-    private Point2D position;
     private int fuel;
     private boolean isActive;
-    private Rectangle bounds;
     private boolean showBounds;
 
     public Helicopter(int fuel, Point2D position) {
         makeHelicopterShape();
         makeFuelGauge(fuel);
-        this.getChildren().addAll(bodyCircle, headingLine, fuelGauge);
+        makeBoundingBox();
+        this.getChildren().addAll(bodyCircle, headingLine, fuelGauge, bounds);
+
+        this.getTransforms().add(new Translate(position.getX(),
+                position.getY()));
 
         this.heading = 0;
         this.speed = 0;
         this.fuel = fuel;
         this.position = position;
         this.isActive = false;
-
-        this.getTransforms().add(new Translate(position.getX(),
-                position.getY()));
-
-        // Bounding box work
-        setupBoundingBox();
-    }
-
-    private void setupBoundingBox() {
-        bounds = new Rectangle(this.getBoundsInParent().getWidth(),
-                this.getBoundsInParent().getHeight());
-        bounds.getTransforms().add(
-                new Translate((-bounds.getWidth() / 2),
-                        (-bounds.getHeight() / 2) ));
-        bounds.setFill(Color.TRANSPARENT);
-        bounds.setStrokeWidth(1);
-        bounds.setStroke(Color.YELLOW);
-        bounds.setVisible(false);
-        this.getChildren().add(bounds);
-    }
-
-    private void makeFuelGauge(int fuel) {
-        fuelGauge = new GameText("F:" + fuel, Game.HELICOPTER_COLOR);
-        fuelGauge.setTranslateY(-15);
-        fuelGauge.setTranslateX(-25);
     }
 
     private void makeHelicopterShape() {
@@ -550,12 +532,29 @@ class Helicopter extends GameObject implements Updatable {
         headingLine.setStroke(Game.HELICOPTER_COLOR);
     }
 
+    private void makeFuelGauge(int fuel) {
+        fuelGauge = new GameText("F:" + fuel, Game.HELICOPTER_COLOR);
+        fuelGauge.setTranslateY(-15);
+        fuelGauge.setTranslateX(-25);
+    }
+
+    private void makeBoundingBox() {
+        bounds = new Rectangle(this.getBoundsInParent().getWidth(),
+                this.getBoundsInParent().getHeight());
+        bounds.getTransforms().add(
+                new Translate((-bounds.getWidth() / 2),
+                        (-bounds.getHeight() / 2) ));
+        bounds.setFill(Color.TRANSPARENT);
+        bounds.setStrokeWidth(1);
+        bounds.setStroke(Color.YELLOW);
+        bounds.setVisible(false);
+    }
+
     @Override
     public void update(double delta) {
         Point2D newPosition = new Point2D(
                 position.getX() + (Math.sin(Math.toRadians(heading)) * speed),
                 position.getY() + (Math.cos(Math.toRadians(heading)) * speed));
-
         position = newPosition;
 
         this.getTransforms().clear();
@@ -563,36 +562,35 @@ class Helicopter extends GameObject implements Updatable {
                 new Translate(position.getX(), position.getY()),
                 new Rotate(-heading));
 
-        // Bounding box work
         updateBoundingBox();
-
-        if (isActive) {
-            if (fuel <= 0) {
-                fuel = 0;
-                fuelGauge.setText("F:" + fuel);
-            } else {
-                fuel -= Math.abs(speed) + 5;
-                fuelGauge.setText("F:" + fuel);
-            }
-        }
+        consumeFuel();
     }
 
     private void updateBoundingBox() {
         this.getChildren().remove(bounds);
 
-//        System.out.println("Width: " + this.getBoundsInParent().getWidth() +
-//                ", Height: " + this.getBoundsInParent().getHeight());
         bounds.setWidth(this.getBoundsInParent().getWidth());
         bounds.setHeight(this.getBoundsInParent().getHeight());
         bounds.getTransforms().clear();
-        bounds.getTransforms().add(
+        bounds.getTransforms().addAll(
                 new Translate((-bounds.getWidth() / 2),
-                        (-bounds.getHeight() / 2) ));
-        bounds.getTransforms().add(new Rotate(heading,
+                    (-bounds.getHeight() / 2) ),
+                new Rotate(heading,
                 this.getBoundsInParent().getWidth() / 2,
                 this.getBoundsInParent().getHeight() / 2));
 
         this.getChildren().add(bounds);
+    }
+
+    private void consumeFuel() {
+        if (isActive && fuel <= Math.abs(speed) + FUEL_CONSUMPTION_RATE) {
+            fuel = 0;
+            fuelGauge.setText("F:" + fuel);
+        } else if (isActive) {
+            fuel -= Math.abs(speed) + FUEL_CONSUMPTION_RATE;
+            fuelGauge.setText("F:" + fuel);
+        }
+        System.out.println(fuel);
     }
 
     public void toggleIgnition() {
