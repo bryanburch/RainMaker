@@ -289,7 +289,17 @@ class Game extends Pane {
     }
 
     public void handleIKeyPressed() {
-        helicopter.toggleIgnition();
+        Shape helicopterHelipadIntersection = Shape.intersect(
+                helicopter.getBoundingBox(), helipad.getBoundingBox());
+        double widthDifference = Math.abs(
+                helicopterHelipadIntersection.getBoundsInLocal().getWidth() -
+                helicopter.getBoundingBox().getBoundsInLocal().getWidth());
+        double heightDifference = Math.abs(
+                helicopterHelipadIntersection.getBoundsInLocal().getHeight()
+                - helicopter.getBoundingBox().getBoundsInLocal().getHeight());
+
+        if (widthDifference < 1e-3 && heightDifference < 1e-3)
+            helicopter.toggleIgnition();
     }
 
     public void handleRKeyPressed() {
@@ -590,7 +600,6 @@ class Helicopter extends GameObject implements Updatable {
             fuel -= Math.abs(speed) + FUEL_CONSUMPTION_RATE;
             fuelGauge.setText("F:" + fuel);
         }
-        System.out.println(fuel);
     }
 
     public void toggleIgnition() {
