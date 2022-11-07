@@ -20,11 +20,11 @@ import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
 
+import java.text.DecimalFormat;
 import java.util.Optional;
 
 /**
- * Manages high-level stuff and initializes/shows scene. Sets up key event
- * handlers that invoke Game class methods.
+ * Sets up key event handlers that invoke Game class methods.
  */
 public class GameApp extends Application {
     private Game game;
@@ -58,8 +58,6 @@ public class GameApp extends Application {
 }
 
 /**
- * Contains game logic and constructs objects. Holds game state and
- * determines win/lose conditions. Not concerned with where/how of user input.
  * Is a Pane to serve as the container for all game objects.
  */
 class Game extends Pane {
@@ -116,11 +114,6 @@ class Game extends Pane {
         init();
     }
 
-    /**
-     * Creates all the new state of the world including the positioning of
-     * each of the game objects. Don’t forget to clear all children out of the
-     * Pane before initializing new objects.
-     */
     private void init() {
         this.getChildren().clear();
 
@@ -189,28 +182,27 @@ class Game extends Pane {
                 showWinDialogIfConditionsMet();
             }
 
-            // TODO: add score (remaining fuel)
             private void showWinDialogIfConditionsMet() {
                 if (hasMetWinConditions()) {
-                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                            "You have won! Play again?");
-                    alert.setTitle("Confirmation");
-                    alert.setHeaderText("Confirmation");
+                    Alert winDialog = makeWinDialog();
+                    ButtonType yes = winDialog.getButtonTypes().get(0);
+                    ButtonType no = winDialog.getButtonTypes().get(1);
 
-                    ButtonType yesButton = new ButtonType("Yes");
-                    ButtonType noButton = new ButtonType("No");
-                    alert.getButtonTypes().setAll(yesButton, noButton);
-
-                    Platform.runLater(() -> {
-                        Optional<ButtonType> result = alert.showAndWait();
-                        System.out.println(result);
-                        if (result.get() == yesButton)
-                            init();
-                        else if (result.get() == noButton)
-                            Platform.exit();
-                    });
-                    this.stop();
+                    displayDialogAndStopGameLoop(winDialog, yes, no);
                 }
+            }
+
+            private void displayDialogAndStopGameLoop(
+                    Alert winDialog, ButtonType yes, ButtonType no) {
+                Platform.runLater(() -> {
+                    Optional<ButtonType> result = winDialog.showAndWait();
+                    System.out.println(result);
+                    if (result.get() == yes)
+                        init();
+                    else if (result.get() == no)
+                        Platform.exit();
+                });
+                this.stop();
             }
 
             private boolean hasMetWinConditions() {
@@ -220,27 +212,42 @@ class Game extends Pane {
                         getBoundsInLocal().isEmpty();
             }
 
+            private Alert makeWinDialog() {
+                DecimalFormat decimalFormat =
+                        new DecimalFormat("###,###");
+                Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                    "You have won! You scored " +
+                            decimalFormat.format(helicopter.getRemainingFuel())
+                            + ". Play again?");
+                alert.setTitle("Confirmation");
+                alert.setHeaderText("Confirmation");
+
+                ButtonType yesButton = new ButtonType("Yes");
+                ButtonType noButton = new ButtonType("No");
+                alert.getButtonTypes().setAll(yesButton, noButton);
+                return alert;
+            }
+
             private void showLoseDialogIfConditionsMet() {
                 if (!helicopter.hasFuel()) {
-                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                            "You have lost! Play again?");
-                    alert.setTitle("Confirmation");
-                    alert.setHeaderText("Confirmation");
+                    Alert loseDialog = makeLoseDialog();
+                    ButtonType yes = loseDialog.getButtonTypes().get(0);
+                    ButtonType no = loseDialog.getButtonTypes().get(1);
 
-                    ButtonType yesButton = new ButtonType("Yes");
-                    ButtonType noButton = new ButtonType("No");
-                    alert.getButtonTypes().setAll(yesButton, noButton);
-
-                    Platform.runLater(() -> {
-                        Optional<ButtonType> result = alert.showAndWait();
-                        System.out.println(result);
-                        if (result.get() == yesButton)
-                            init();
-                        else if (result.get() == noButton)
-                            Platform.exit();
-                    });
-                    this.stop();
+                    displayDialogAndStopGameLoop(loseDialog, yes, no);
                 }
+            }
+
+            private Alert makeLoseDialog() {
+                Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                        "You have lost! Play again?");
+                alert.setTitle("Confirmation");
+                alert.setHeaderText("Confirmation");
+
+                ButtonType yesButton = new ButtonType("Yes");
+                ButtonType noButton = new ButtonType("No");
+                alert.getButtonTypes().setAll(yesButton, noButton);
+                return alert;
             }
 
             private void rainAndFillPond() {
@@ -662,6 +669,10 @@ class Helicopter extends GameObject implements Updatable {
 
     public boolean isEngineOn() {
         return isActive;
+    }
+
+    public int getRemainingFuel() {
+        return fuel;
     }
 }
 
