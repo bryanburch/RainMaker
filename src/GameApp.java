@@ -31,7 +31,7 @@ public class GameApp extends Application {
     private Scene scene;
     
     @Override
-    public void start(Stage primaryStage) throws Exception {
+    public void start(Stage primaryStage) {
         game = new Game();
         scene = new Scene(game, Game.GAME_WIDTH, Game.GAME_HEIGHT);
         primaryStage.setScene(scene);
@@ -474,11 +474,7 @@ class Cloud extends GameObject implements Updatable {
 }
 
 /**
- * Represents starting/ending location for helicopter. Helicopter takes off
- * from here and must return after seeding clouds to win game (helicopter
- * contained in bounds of helipad). Represented by smaller gray circle
- * centered within gray square. Centered along screen width with padding from
- * screen bottom.
+ * Represents starting/ending location for helicopter.
  */
 class Helipad extends GameObject {
     private Rectangle rectangle;
@@ -486,7 +482,6 @@ class Helipad extends GameObject {
     private Rectangle bounds;
     private boolean showBounds;
 
-    // TODO: derive size from game dimensions
     public Helipad(Point2D size) {
         rectangle = new Rectangle(size.getX(), size.getY());
         rectangle.setFill(Color.TRANSPARENT);
@@ -503,7 +498,6 @@ class Helipad extends GameObject {
         this.getTransforms().add(new Translate(Game.HELIPAD_POSITION.getX(),
                 Game.HELIPAD_POSITION.getY()));
 
-        // Bounding box work
         bounds = new Rectangle(rectangle.getWidth(), rectangle.getHeight());
         bounds.setFill(Color.TRANSPARENT);
         bounds.setStroke(Color.YELLOW);
@@ -523,12 +517,6 @@ class Helipad extends GameObject {
 
 }
 
-/**
- * Represented as yellow circle with line extending from center pointing in
- * direction of heading (in degrees; starts true north == 0 degrees). Derive
- * the size of the helicopter object from the dimensions of the screen. Fuel
- * displayed below body to start and rotates with change in heading.
- */
 class Helicopter extends GameObject implements Updatable {
     final static int HEADING_LENGTH = 30;
     final static int FUEL_CONSUMPTION_RATE = 5;
@@ -543,15 +531,12 @@ class Helicopter extends GameObject implements Updatable {
     private boolean isActive;
     private boolean showBounds;
 
-    // TODO: derive helicopter size from screen dimensions
     public Helicopter(int fuel, Point2D position) {
         makeHelicopterShape();
         makeFuelGauge(fuel);
         makeBoundingBox();
         this.getChildren().addAll(bodyCircle, headingLine, fuelGauge, bounds);
 
-        // TODO: instead of passing in a hard coded position, pass the center
-        //  coordinate for the helipad and place helicopter based on this
         this.getTransforms().add(new Translate(position.getX(),
                 position.getY()));
 
@@ -677,8 +662,7 @@ class Helicopter extends GameObject implements Updatable {
 }
 
 /**
- * Game objects that should update will implement this interface. Objects
- * will be updated from the main game timer.
+ * Objects will be updated from the main game timer.
  */
 interface Updatable {
     void update();
@@ -700,12 +684,7 @@ class GameText extends GameObject {
         this.getChildren().add(text);
     }
 
-    public String getText() {
-        return text.getText();
-    }
-
     public void setText(String string) {
         text.setText(string);
     }
-
 }
