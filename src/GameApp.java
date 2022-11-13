@@ -63,7 +63,6 @@ public class GameApp extends Application {
 class Game extends Pane {
     final static int GAME_HEIGHT = 800;
     final static int GAME_WIDTH = 800;
-    final static Color BACKGROUND_COLOR = Color.BLACK;
 
     final static Color POND_COLOR = Color.BLUE;
     final static Color POND_TEXT_COLOR = Color.WHITE;
@@ -484,28 +483,23 @@ class Cloud extends GameObject implements Updatable {
  * Represents starting/ending location for helicopter.
  */
 class Helipad extends GameObject {
-    private Rectangle rectangle;
-    private Circle circle;
     private Rectangle bounds;
     private boolean showBounds;
 
     public Helipad(Point2D size) {
-        rectangle = new Rectangle(size.getX(), size.getY());
-        rectangle.setFill(Color.TRANSPARENT);
-        rectangle.setStroke(Game.HELIPAD_COLOR);
-
-        circle = new Circle(rectangle.getWidth() / 2 - 10);
-        circle.setFill(Color.TRANSPARENT);
-        circle.setStroke(Game.HELIPAD_COLOR);
-        circle.setTranslateX(circle.getTranslateX() + size.getX() / 2);
-        circle.setTranslateY(circle.getTranslateY() + size.getY() / 2);
-
-        this.getChildren().addAll(rectangle, circle);
+        ImageView image = new ImageView(new Image("helipad_textured.png"));
+        image.setFitHeight(size.getY());
+        image.setFitWidth(size.getX());
+        this.getChildren().add(image);
 
         this.getTransforms().add(new Translate(Game.HELIPAD_POSITION.getX(),
                 Game.HELIPAD_POSITION.getY()));
 
-        bounds = new Rectangle(rectangle.getWidth(), rectangle.getHeight());
+        makeBoundingBox(size);
+    }
+
+    private void makeBoundingBox(Point2D size) {
+        bounds = new Rectangle(size.getX(), size.getY());
         bounds.setFill(Color.TRANSPARENT);
         bounds.setStroke(Color.YELLOW);
         bounds.setStrokeWidth(1);
@@ -521,7 +515,6 @@ class Helipad extends GameObject {
     public Rectangle getBoundingBox() {
         return bounds;
     }
-
 }
 
 class Helicopter extends GameObject implements Updatable {
