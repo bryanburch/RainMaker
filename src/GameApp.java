@@ -7,9 +7,9 @@ import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
-import javafx.scene.layout.Background;
-import javafx.scene.layout.BackgroundFill;
-import javafx.scene.layout.Pane;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Line;
@@ -62,7 +62,7 @@ public class GameApp extends Application {
  */
 class Game extends Pane {
     final static int GAME_HEIGHT = 800;
-    final static int GAME_WIDTH = 400;
+    final static int GAME_WIDTH = 800;
     final static Color BACKGROUND_COLOR = Color.BLACK;
 
     final static Color POND_COLOR = Color.BLUE;
@@ -80,10 +80,12 @@ class Game extends Pane {
     final static Color HELIPAD_COLOR = Color.LIGHTGRAY;
     final static Point2D HELIPAD_SIZE = new Point2D(100, 100);
     final static Point2D HELIPAD_POSITION =
-            new Point2D((GAME_WIDTH / 2) - (HELIPAD_SIZE.getX() / 2), 20);
+            new Point2D((GAME_WIDTH / 2) - (HELIPAD_SIZE.getX() / 2),
+                    GAME_HEIGHT / 25);
 
     final static Color HELICOPTER_COLOR = Color.YELLOW;
-    final static Point2D HELICOPTER_START = new Point2D(200, 70);
+    final static Point2D HELICOPTER_START = new Point2D(GAME_WIDTH / 2,
+            GAME_HEIGHT / 10);
     final static int HELICOPTER_MAX_SPEED = 10;
     final static int HELICOPTER_MIN_SPEED = -2;
     final static int HELICOPTER_START_FUEL = 25000;
@@ -108,8 +110,13 @@ class Game extends Pane {
     }
 
     public Game() {
-        this.setBackground(new Background(new BackgroundFill(BACKGROUND_COLOR
-                , null, null)));
+        /* image credit: https://earthobservatory.nasa.gov/images/51341/
+        two-views-of-the-painted-desert */
+        BackgroundImage background = new BackgroundImage(
+                new Image("desert_background_large.png"),
+                BackgroundRepeat.REPEAT, BackgroundRepeat.NO_REPEAT,
+                BackgroundPosition.DEFAULT, BackgroundSize.DEFAULT);
+        this.setBackground(new Background(background));
         this.setScaleY(-1);
         init();
     }
@@ -686,5 +693,9 @@ class GameText extends GameObject {
 
     public void setText(String string) {
         text.setText(string);
+    }
+
+    public String getText() {
+        return text.getText();
     }
 }
