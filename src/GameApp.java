@@ -518,10 +518,7 @@ class Helipad extends GameObject {
 }
 
 class Helicopter extends GameObject implements Updatable {
-    final static int HEADING_LENGTH = 30;
     final static int FUEL_CONSUMPTION_RATE = 5;
-    private Circle bodyCircle;
-    private Line headingLine;
     private GameText fuelGauge;
     private Rectangle bounds;
     private Point2D position;
@@ -531,11 +528,14 @@ class Helicopter extends GameObject implements Updatable {
     private boolean isActive;
     private boolean showBounds;
 
+    private HeliBody heliBody;
+    private HeliBlade heliBlade;
+
     public Helicopter(int fuel, Point2D position) {
         makeHelicopterShape();
         makeFuelGauge(fuel);
         makeBoundingBox();
-        this.getChildren().addAll(bodyCircle, headingLine, fuelGauge, bounds);
+        this.getChildren().addAll(fuelGauge, bounds);
 
         this.getTransforms().add(new Translate(position.getX(),
                 position.getY()));
@@ -548,10 +548,11 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     private void makeHelicopterShape() {
-        bodyCircle = new Circle(10, Game.HELICOPTER_COLOR);
-        headingLine = new Line(0, 0, 0, HEADING_LENGTH);
-        headingLine.setStrokeWidth(2);
-        headingLine.setStroke(Game.HELICOPTER_COLOR);
+        heliBody = new HeliBody();
+        this.getChildren().add(heliBody);
+
+        heliBlade = new HeliBlade();
+        this.getChildren().add(heliBlade);
     }
 
     private void makeFuelGauge(int fuel) {
@@ -658,6 +659,45 @@ class Helicopter extends GameObject implements Updatable {
 
     public int getRemainingFuel() {
         return fuel;
+    }
+}
+
+class HeliBody extends GameObject {
+
+    public static final int SIZE = 75;
+
+    public HeliBody() {
+        ImageView image = new ImageView(
+                new Image("helibody_2x_transparent.png"));
+        image.setFitHeight(SIZE);
+        image.setFitWidth(SIZE);
+        this.setTranslateX(-SIZE/2);
+        this.setTranslateY(-SIZE/2);
+        this.setRotate(180);
+        this.getChildren().add(image);
+    }
+}
+
+class HeliBlade extends GameObject {
+
+    public static final int SIZE = 75;
+
+    public HeliBlade() {
+        ImageView image = new ImageView(
+                new Image("heliblade_2wing_transparent.png"));
+        image.setFitHeight(SIZE);
+        image.setFitWidth(SIZE);
+        this.setTranslateX(-SIZE/2);
+        this.setTranslateY(-SIZE/2);
+        this.getChildren().add(image);
+
+        AnimationTimer loop = new AnimationTimer() {
+            @Override
+            public void handle(long now) {
+                HeliBlade.super.setRotate(HeliBlade.super.getRotate() + 15);
+            }
+        };
+        loop.start();
     }
 }
 
