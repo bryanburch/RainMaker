@@ -12,7 +12,6 @@ import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
-import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Shape;
 import javafx.scene.text.Text;
@@ -530,6 +529,7 @@ class Helicopter extends GameObject implements Updatable {
 
     private HeliBody heliBody;
     private HeliBlade heliBlade;
+    private HeliState state;
 
     public Helicopter(int fuel, Point2D position) {
         makeHelicopterShape();
@@ -545,14 +545,14 @@ class Helicopter extends GameObject implements Updatable {
         this.fuel = fuel;
         this.position = position;
         this.isActive = false;
+
+        state = new OffHeliState();
     }
 
     private void makeHelicopterShape() {
         heliBody = new HeliBody();
-        this.getChildren().add(heliBody);
-
         heliBlade = new HeliBlade();
-        this.getChildren().add(heliBlade);
+        this.getChildren().addAll(heliBody, heliBlade);
     }
 
     private void makeFuelGauge(int fuel) {
@@ -575,10 +575,9 @@ class Helicopter extends GameObject implements Updatable {
 
     @Override
     public void update() {
-        Point2D newPosition = new Point2D(
+        position = new Point2D(
                 position.getX() + (Math.sin(Math.toRadians(heading)) * speed),
                 position.getY() + (Math.cos(Math.toRadians(heading)) * speed));
-        position = newPosition;
 
         this.getTransforms().clear();
         this.getTransforms().addAll(
@@ -618,6 +617,7 @@ class Helicopter extends GameObject implements Updatable {
     public void toggleIgnition() {
         if (Math.abs(speed) < 1e-3)
             isActive = !isActive;
+        state.onIgnition(this);
     }
 
     public void turnLeft() {
@@ -660,6 +660,10 @@ class Helicopter extends GameObject implements Updatable {
     public int getRemainingFuel() {
         return fuel;
     }
+
+    public void changeState(HeliState state) {
+        this.state = state;
+    }
 }
 
 class HeliBody extends GameObject {
@@ -679,10 +683,29 @@ class HeliBody extends GameObject {
 }
 
 class HeliBlade extends GameObject {
-
     public static final int SIZE = 75;
+    public static final int MIN_SPEED = 0;
+    public static final int MAX_SPEED = 15;
+
+    private double rotationalSpeed;
 
     public HeliBlade() {
+        loadAndSetImage();
+        rotationalSpeed = 15;
+        startAnimation();
+    }
+
+    private void startAnimation() {
+        AnimationTimer loop = new AnimationTimer() {
+            @Override
+            public void handle(long now) {
+                HeliBlade.super.setRotate(HeliBlade.super.getRotate() + rotationalSpeed);
+            }
+        };
+        loop.start();
+    }
+
+    private void loadAndSetImage() {
         ImageView image = new ImageView(
                 new Image("heliblade_2wing_transparent.png"));
         image.setFitHeight(SIZE);
@@ -690,15 +713,58 @@ class HeliBlade extends GameObject {
         this.setTranslateX(-SIZE/2);
         this.setTranslateY(-SIZE/2);
         this.getChildren().add(image);
-
-        AnimationTimer loop = new AnimationTimer() {
-            @Override
-            public void handle(long now) {
-                HeliBlade.super.setRotate(HeliBlade.super.getRotate() + 15);
-            }
-        };
-        loop.start();
     }
+
+    public void spinUp() {
+        if (rotationalSpeed < MAX_SPEED)
+            rotationalSpeed += 1;
+    }
+
+    public void spinDownToMin() {
+        if (rotationalSpeed <= MIN_SPEED)
+            rotationalSpeed -= 1;
+    }
+}
+
+interface HeliState {
+    void onIgnition(Helicopter helicopter);
+}
+
+class OffHeliState implements HeliState {
+
+    @Override
+    public void onIgnition(Helicopter helicopter) {
+        helicopter.changeState(new StartingHeliState());
+    }
+
+}
+
+class StartingHeliState implements HeliState {
+
+    @Override
+    public void onIgnition(Helicopter helicopter) {
+        helicopter.changeState(new StoppingHeliState());
+
+    }
+
+}
+
+class StoppingHeliState implements HeliState {
+
+    @Override
+    public void onIgnition(Helicopter helicopter) {
+        helicopter.changeState(new StartingHeliState());
+    }
+
+}
+
+class ReadyHeliState implements HeliState {
+
+    @Override
+    public void onIgnition(Helicopter helicopter) {
+        helicopter.changeState(new StoppingHeliState());
+    }
+
 }
 
 /**
