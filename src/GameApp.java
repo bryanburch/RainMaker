@@ -75,17 +75,18 @@ class Game extends Pane {
     final static int MIN_CLOUD_RADIUS = 30;
     final static double RAIN_FREQUENCY = 0.6;
 
-    final static Color HELIPAD_COLOR = Color.LIGHTGRAY;
     final static Point2D HELIPAD_SIZE = new Point2D(100, 100);
     final static Point2D HELIPAD_POSITION =
             new Point2D((GAME_WIDTH / 2) - (HELIPAD_SIZE.getX() / 2),
                     GAME_HEIGHT / 25);
 
     final static Color HELICOPTER_COLOR = Color.YELLOW;
+    final static int ROTOR_LENGTH = 80;
     final static Point2D HELICOPTER_START = new Point2D(GAME_WIDTH / 2,
             GAME_HEIGHT / 10);
     final static int HELICOPTER_MAX_SPEED = 10;
     final static int HELICOPTER_MIN_SPEED = -2;
+    final static double ROTOR_ACCELERATION = 0.1;
     final static int HELICOPTER_START_FUEL = 25000;
 
     final static double NANOS_PER_SEC = 1e9;
@@ -213,7 +214,7 @@ class Game extends Pane {
             private boolean hasMetWinConditions() {
                 return pond.isFull() && helicopter.hasFuel() &&
                     !helicopter.isEngineOn() && !Shape.intersect(
-                        helicopter.getBoundingBox(), helipad.getBoundingBox()).
+                        helicopter.getBoundingCircle(), helipad.getBoundingBox()).
                         getBoundsInLocal().isEmpty();
             }
 
@@ -266,7 +267,7 @@ class Game extends Pane {
             }
 
             private void seedIfNearCloud() {
-                if (!Shape.intersect(helicopter.getBoundingBox(),
+                if (!Shape.intersect(helicopter.getBoundingCircle(),
                         cloud.getBoundingBox()).getBoundsInLocal().isEmpty() &&
                         allowSeeding) {
                     cloud.seed();
@@ -306,14 +307,15 @@ class Game extends Pane {
     }
 
     public void handleIKeyPressed() {
+        // TODO update containment logic
         Shape helicopterHelipadIntersection = Shape.intersect(
-                helicopter.getBoundingBox(), helipad.getBoundingBox());
+                helicopter.getBoundingCircle(), helipad.getBoundingBox());
         double widthDifference = Math.abs(
                 helicopterHelipadIntersection.getBoundsInLocal().getWidth() -
-                helicopter.getBoundingBox().getBoundsInLocal().getWidth());
+                helicopter.getBoundingCircle().getBoundsInLocal().getWidth());
         double heightDifference = Math.abs(
                 helicopterHelipadIntersection.getBoundsInLocal().getHeight()
-                - helicopter.getBoundingBox().getBoundsInLocal().getHeight());
+                - helicopter.getBoundingCircle().getBoundsInLocal().getHeight());
 
         if (widthDifference < 1e-3 && heightDifference < 1e-3)
             helicopter.toggleIgnition();
@@ -519,7 +521,7 @@ class Helipad extends GameObject {
 class Helicopter extends GameObject implements Updatable {
     final static int FUEL_CONSUMPTION_RATE = 5;
     private GameText fuelGauge;
-    private Rectangle bounds;
+    private Circle bounds;
     private Point2D position;
     private double heading;
     private double speed;
@@ -562,11 +564,7 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     private void makeBoundingBox() {
-        bounds = new Rectangle(this.getBoundsInParent().getWidth(),
-                this.getBoundsInParent().getHeight());
-        bounds.getTransforms().add(
-                new Translate((-bounds.getWidth() / 2),
-                        (-bounds.getHeight() / 2) ));
+        bounds = new Circle(Game.ROTOR_LENGTH / 2);
         bounds.setFill(Color.TRANSPARENT);
         bounds.setStrokeWidth(1);
         bounds.setStroke(Color.YELLOW);
@@ -575,33 +573,18 @@ class Helicopter extends GameObject implements Updatable {
 
     @Override
     public void update() {
-        position = new Point2D(
-                position.getX() + (Math.sin(Math.toRadians(heading)) * speed),
-                position.getY() + (Math.cos(Math.toRadians(heading)) * speed));
+        Point2D newPosition = state.update(position, heading, speed,
+                heliBlade, this);
 
-        this.getTransforms().clear();
-        this.getTransforms().addAll(
-                new Translate(position.getX(), position.getY()),
-                new Rotate(-heading));
+        if (newPosition != null) {
+            position = newPosition;
+            this.getTransforms().clear();
+            this.getTransforms().addAll(
+                    new Translate(position.getX(), position.getY()),
+                    new Rotate(-heading));
+        }
 
-        updateBoundingBox();
         consumeFuel();
-    }
-
-    private void updateBoundingBox() {
-        this.getChildren().remove(bounds);
-
-        bounds.setWidth(this.getBoundsInParent().getWidth());
-        bounds.setHeight(this.getBoundsInParent().getHeight());
-        bounds.getTransforms().clear();
-        bounds.getTransforms().addAll(
-                new Translate((-bounds.getWidth() / 2),
-                    (-bounds.getHeight() / 2) ),
-                new Rotate(heading,
-                this.getBoundsInParent().getWidth() / 2,
-                this.getBoundsInParent().getHeight() / 2));
-
-        this.getChildren().add(bounds);
     }
 
     private void consumeFuel() {
@@ -615,29 +598,26 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     public void toggleIgnition() {
-        if (Math.abs(speed) < 1e-3)
-            isActive = !isActive;
-        state.onIgnition(this);
+        state = state.toggleIgnition(heliBlade);
+//        if (Math.abs(speed) < 1e-3)
+//            isActive = !isActive;
     }
 
+
     public void turnLeft() {
-        if (isActive && Math.abs(speed) > 1e-3)
-            heading -= 15;
+        state.turnLeft(this);
     }
 
     public void turnRight() {
-        if (isActive && Math.abs(speed) > 1e-3)
-            heading += 15;
+        state.turnRight(this);
     }
 
     public void increaseSpeed() {
-        if (isActive && speed < Game.HELICOPTER_MAX_SPEED)
-            speed += 0.1;
+        state.increaseSpeed(this);
     }
 
     public void decreaseSpeed() {
-        if (isActive && speed > Game.HELICOPTER_MIN_SPEED)
-            speed -= 0.1;
+        state.decreaseSpeed(this);
     }
 
     public void toggleBoundingBox() {
@@ -645,7 +625,7 @@ class Helicopter extends GameObject implements Updatable {
         bounds.setVisible(showBounds);
     }
 
-    public Rectangle getBoundingBox() {
+    public Circle getBoundingCircle() {
         return bounds;
     }
 
@@ -663,6 +643,22 @@ class Helicopter extends GameObject implements Updatable {
 
     public void changeState(HeliState state) {
         this.state = state;
+    }
+
+    public double getSpeed() {
+        return speed;
+    }
+
+    public void setSpeed(double speed) {
+        this.speed = speed;
+    }
+
+    public double getHeading() {
+        return heading;
+    }
+
+    public void setHeading(double heading) {
+        this.heading = heading;
     }
 }
 
@@ -683,23 +679,30 @@ class HeliBody extends GameObject {
 }
 
 class HeliBlade extends GameObject {
-    public static final int SIZE = 75;
     public static final int MIN_SPEED = 0;
     public static final int MAX_SPEED = 15;
 
     private double rotationalSpeed;
+    private boolean isActive;
 
     public HeliBlade() {
         loadAndSetImage();
-        rotationalSpeed = 15;
+        rotationalSpeed = 0;
         startAnimation();
     }
 
     private void startAnimation() {
         AnimationTimer loop = new AnimationTimer() {
+
             @Override
             public void handle(long now) {
-                HeliBlade.super.setRotate(HeliBlade.super.getRotate() + rotationalSpeed);
+                if (isActive && rotationalSpeed < MAX_SPEED)
+                    rotationalSpeed += Game.ROTOR_ACCELERATION;
+                else if (!isActive && rotationalSpeed > MIN_SPEED) {
+                    rotationalSpeed -= Game.ROTOR_ACCELERATION;
+                }
+                HeliBlade.super.setRotate(
+                        HeliBlade.super.getRotate() + rotationalSpeed);
             }
         };
         loop.start();
@@ -708,33 +711,72 @@ class HeliBlade extends GameObject {
     private void loadAndSetImage() {
         ImageView image = new ImageView(
                 new Image("heliblade_2wing_transparent.png"));
-        image.setFitHeight(SIZE);
-        image.setFitWidth(SIZE);
-        this.setTranslateX(-SIZE/2);
-        this.setTranslateY(-SIZE/2);
+        image.setFitHeight(Game.ROTOR_LENGTH);
+        image.setFitWidth(Game.ROTOR_LENGTH);
+        this.setTranslateX(-Game.ROTOR_LENGTH / 2);
+        this.setTranslateY(-Game.ROTOR_LENGTH / 2);
         this.getChildren().add(image);
     }
 
     public void spinUp() {
-        if (rotationalSpeed < MAX_SPEED)
-            rotationalSpeed += 1;
+        isActive = true;
     }
 
-    public void spinDownToMin() {
-        if (rotationalSpeed <= MIN_SPEED)
-            rotationalSpeed -= 1;
+    public void spinDown() {
+        isActive = false;
+    }
+
+    public boolean isUpToSpeed() {
+        return rotationalSpeed >= MAX_SPEED;
     }
 }
 
 interface HeliState {
-    void onIgnition(Helicopter helicopter);
+    Point2D update(Point2D position, double heading, double speed, HeliBlade heliBlade, Helicopter helicopter);
+
+    HeliState toggleIgnition(HeliBlade heliBlade);
+
+    void turnLeft(Helicopter helicopter);
+
+    void turnRight(Helicopter helicopter);
+
+    void increaseSpeed(Helicopter helicopter);
+
+    void decreaseSpeed(Helicopter helicopter);
+
 }
 
 class OffHeliState implements HeliState {
+    @Override
+    public Point2D update(Point2D position, double heading, double speed, HeliBlade heliBlade, Helicopter helicopter) {
+        // nothing to update in this state
+        return null;
+    }
 
     @Override
-    public void onIgnition(Helicopter helicopter) {
-        helicopter.changeState(new StartingHeliState());
+    public HeliState toggleIgnition(HeliBlade heliBlade) {
+        heliBlade.spinUp();
+        return new StartingHeliState();
+    }
+
+    @Override
+    public void turnLeft(Helicopter helicopter) {
+        // not possible in this state
+    }
+
+    @Override
+    public void turnRight(Helicopter helicopter) {
+        // not possible in this state
+    }
+
+    @Override
+    public void increaseSpeed(Helicopter helicopter) {
+        // not possible in this state
+    }
+
+    @Override
+    public void decreaseSpeed(Helicopter helicopter) {
+        // not possible in this state
     }
 
 }
@@ -742,9 +784,36 @@ class OffHeliState implements HeliState {
 class StartingHeliState implements HeliState {
 
     @Override
-    public void onIgnition(Helicopter helicopter) {
-        helicopter.changeState(new StoppingHeliState());
+    public Point2D update(Point2D position, double heading, double speed, HeliBlade heliBlade, Helicopter helicopter) {
+        if (heliBlade.isUpToSpeed())
+            helicopter.changeState(new ReadyHeliState());
+        return null;
+    }
 
+    @Override
+    public HeliState toggleIgnition(HeliBlade heliBlade) {
+        heliBlade.spinDown();
+        return new StoppingHeliState();
+    }
+
+    @Override
+    public void turnLeft(Helicopter helicopter) {
+        // not possible in this state
+    }
+
+    @Override
+    public void turnRight(Helicopter helicopter) {
+        // not possible in this state
+    }
+
+    @Override
+    public void increaseSpeed(Helicopter helicopter) {
+        // not possible in this state
+    }
+
+    @Override
+    public void decreaseSpeed(Helicopter helicopter) {
+        // not possible in this state
     }
 
 }
@@ -752,8 +821,35 @@ class StartingHeliState implements HeliState {
 class StoppingHeliState implements HeliState {
 
     @Override
-    public void onIgnition(Helicopter helicopter) {
-        helicopter.changeState(new StartingHeliState());
+    public Point2D update(Point2D position, double heading, double speed, HeliBlade heliBlade, Helicopter helicopter) {
+        // nothing to update in this state
+        return null;
+    }
+
+    @Override
+    public HeliState toggleIgnition(HeliBlade heliBlade) {
+        heliBlade.spinUp();
+        return new StartingHeliState();
+    }
+
+    @Override
+    public void turnLeft(Helicopter helicopter) {
+        // not possible in this state
+    }
+
+    @Override
+    public void turnRight(Helicopter helicopter) {
+        // not possible in this state
+    }
+
+    @Override
+    public void increaseSpeed(Helicopter helicopter) {
+        // not possible in this state
+    }
+
+    @Override
+    public void decreaseSpeed(Helicopter helicopter) {
+        // not possible in this state
     }
 
 }
@@ -761,10 +857,41 @@ class StoppingHeliState implements HeliState {
 class ReadyHeliState implements HeliState {
 
     @Override
-    public void onIgnition(Helicopter helicopter) {
-        helicopter.changeState(new StoppingHeliState());
+    public Point2D update(Point2D position, double heading, double speed, HeliBlade heliBlade, Helicopter helicopter) {
+        return new Point2D(
+                position.getX() + (Math.sin(Math.toRadians(heading)) * speed),
+                position.getY() + (Math.cos(Math.toRadians(heading)) * speed));
     }
 
+    @Override
+    public HeliState toggleIgnition(HeliBlade heliBlade) {
+        heliBlade.spinDown();
+        return new StoppingHeliState();
+    }
+
+    @Override
+    public void turnLeft(Helicopter helicopter) {
+        if (Math.abs(helicopter.getSpeed()) > 1e-3)
+            helicopter.setHeading(helicopter.getHeading() - 15);
+    }
+
+    @Override
+    public void turnRight(Helicopter helicopter) {
+        if (Math.abs(helicopter.getSpeed()) > 1e-3)
+            helicopter.setHeading(helicopter.getHeading() + 15);
+    }
+
+    @Override
+    public void increaseSpeed(Helicopter helicopter) {
+        if (helicopter.getSpeed() < Game.HELICOPTER_MAX_SPEED)
+            helicopter.setSpeed(helicopter.getSpeed() + 0.1);
+    }
+
+    @Override
+    public void decreaseSpeed(Helicopter helicopter) {
+        if (helicopter.getSpeed() > Game.HELICOPTER_MIN_SPEED)
+            helicopter.setSpeed(helicopter.getSpeed() - 0.1);
+    }
 }
 
 /**
