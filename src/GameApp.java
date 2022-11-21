@@ -67,11 +67,13 @@ class Game extends Pane {
     final static int GAME_HEIGHT = 800;
     final static int GAME_WIDTH = 800;
 
+    final static int NUM_PONDS = 3;
     final static Color POND_COLOR = Color.BLUE;
     final static Color POND_TEXT_COLOR = Color.WHITE;
     final static int MAX_POND_RADIUS = 50;
     final static int MAX_STARTING_POND_RADIUS = (int) (MAX_POND_RADIUS * 0.30);
     final static int MIN_POND_RADIUS = 5;
+    public static final int TOTAL_POND_CAPACITY_TO_WIN = 80;
 
     final static Color CLOUD_COLOR = Color.WHITE;
     final static Color CLOUD_TEXT_COLOR = Color.BLUE;
@@ -101,9 +103,10 @@ class Game extends Pane {
 
     final static double NANOS_PER_SEC = 1e9;
 
+    private Ponds ponds;
+    private Clouds clouds;
     private BoundsPane bounds;
 
-    private Pond pond;
     private Cloud cloud;
     private Helipad helipad;
     private Helicopter helicopter;
@@ -135,11 +138,18 @@ class Game extends Pane {
     private void init() {
         this.getChildren().clear();
 
-        this.pond = makePond();
+        initPonds();
+
+        /* Init clouds */
         this.cloud = makeCloud();
+
+        /* Init helipad */
         this.helipad = makeHelipad();
+
+        /* Init helicopter */
         this.helicopter = makeHelicopter();
 
+        /* Init bounds */
         bounds = new BoundsPane();
         bounds.add(cloud, new Circle(
                 cloud.getBoundsInParent().getWidth() / 2));
@@ -149,15 +159,21 @@ class Game extends Pane {
         bounds.add(helicopter, new Circle(ROTOR_LENGTH / 2));
         bounds.setVisible(false);
 
-        this.getChildren().addAll(pond, cloud, helipad, helicopter, bounds);
+        this.getChildren().addAll(ponds, cloud, helipad, helicopter, bounds);
 
         loop = makeGameLoop();
         loop.start();
     }
 
+    private void initPonds() {
+        ponds = new Ponds();
+        for (int i = 0; i < NUM_PONDS; i++)
+            ponds.add(makePond());
+    }
+
     private static Helicopter makeHelicopter() {
-        Helicopter helicopter = new Helicopter(HELIPAD_POSITION, HELICOPTER_START_FUEL
-        );
+        Helicopter helicopter = new Helicopter(HELIPAD_POSITION,
+                HELICOPTER_START_FUEL);
         return helicopter;
     }
 
@@ -201,7 +217,7 @@ class Game extends Pane {
 
                 helicopter.update();
                 cloud.update();
-                pond.update();
+                ponds.update();
 
                 bounds.update();
 
@@ -236,8 +252,10 @@ class Game extends Pane {
             }
 
             private boolean hasMetWinConditions() {
-                return pond.isFull() && helicopter.hasFuel() &&
-                    !helicopter.isEngineOn() && isHelicopterWithinHelipad();
+                return ponds.getTotalCapacity() >= TOTAL_POND_CAPACITY_TO_WIN
+                        && helicopter.hasFuel()
+                        && helicopter.isEngineOff()
+                        && isHelicopterWithinHelipad();
             }
 
             private Alert makeWinDialog() {
@@ -282,7 +300,7 @@ class Game extends Pane {
                 if (timer >= RAIN_FREQUENCY) {
                     boolean hasRained = cloud.rain();
                     if (hasRained) {
-                        pond.fill();
+                        ponds.fill();
                     }
                     timer = 0;
                 }
@@ -309,6 +327,13 @@ class Game extends Pane {
         return gameLoop;
     }
 
+    private boolean isHelicopterWithinHelipad() {
+        Bound helipadBounds = bounds.getFor(helipad);
+        Bound helicopterBounds = bounds.getFor(helicopter);
+
+        return helicopterBounds.containedIn(helipadBounds);
+    }
+
     public void handleLeftKeyPressed() {
         helicopter.turnLeft();
     }
@@ -332,13 +357,6 @@ class Game extends Pane {
     public void handleIKeyPressed() {
         if (helicopter.isStationary() && isHelicopterWithinHelipad())
             helicopter.toggleIgnition();
-    }
-
-    private boolean isHelicopterWithinHelipad() {
-        Bound helipadBounds = bounds.getFor(helipad);
-        Bound helicopterBounds = bounds.getFor(helicopter);
-
-        return helicopterBounds.containedIn(helipadBounds);
     }
 
     public void handleRKeyPressed() {
@@ -514,6 +532,38 @@ abstract class GameObject extends Group {
     }
 }
 
+class Ponds extends Pane implements Updatable {
+    private List<Pond> ponds;
+
+    public Ponds() {
+        ponds = new LinkedList<>();
+    }
+
+    public void add(Pond pond) {
+        ponds.add(pond);
+        this.getChildren().add(pond);
+    }
+
+    @Override
+    public void update() {
+        for (Pond p : ponds)
+            p.update();
+    }
+
+    public int getTotalCapacity() {
+        int totalCapacity = 0;
+        for (Pond p : ponds)
+            totalCapacity += p.getPercentFull();
+        return totalCapacity;
+    }
+
+    // TODO
+    public void fill() {
+        for (Pond p : ponds)
+            p.fill();
+    }
+}
+
 class Pond extends GameObject implements Updatable {
     private Circle pondCircle;
     private double maxRadius, currentRadius;
@@ -564,6 +614,28 @@ class Pond extends GameObject implements Updatable {
 
     public boolean isFull() {
         return percentFull >= 100;
+    }
+
+    public int getPercentFull() {
+        return percentFull;
+    }
+}
+
+class Clouds extends Pane implements Updatable {
+    private List<Cloud> clouds;
+
+    public Clouds() {
+        clouds = new LinkedList<>();
+    }
+
+    public void add(Cloud cloud) {
+        clouds.add(cloud);
+    }
+
+    @Override
+    public void update() {
+        for (Cloud c : clouds)
+            c.update();
     }
 }
 
@@ -664,7 +736,6 @@ class Helicopter extends GameObject implements Updatable {
     private double heading;
     private double speed;
     private double fuel;
-    private boolean isActive;
 
     private HeliBody heliBody;
     private HeliBlade heliBlade;
@@ -682,7 +753,6 @@ class Helicopter extends GameObject implements Updatable {
         this.heading = 0;
         this.speed = 0;
         this.fuel = fuel;
-        this.isActive = false;
 
         state = new OffHeliState();
     }
@@ -748,8 +818,8 @@ class Helicopter extends GameObject implements Updatable {
         return fuel > 0;
     }
 
-    public boolean isEngineOn() {
-        return isActive;
+    public boolean isEngineOff() {
+        return state instanceof OffHeliState;
     }
 
     public double getRemainingFuel() {
@@ -852,6 +922,10 @@ class HeliBlade extends Group {
     public boolean isUpToSpeed() {
         return rotationalSpeed >= Game.ROTOR_MAX_SPEED;
     }
+
+    public boolean isRotating() {
+        return Math.abs(rotationalSpeed) > 1e-3;
+    }
 }
 
 interface HeliState {
@@ -949,6 +1023,9 @@ class StoppingHeliState implements HeliState {
     @Override
     public Point2D updatePosition(Point2D position, double heading,
       double speed, double fuel, HeliBlade heliBlade, Helicopter helicopter) {
+        if (!heliBlade.isRotating()) {
+            helicopter.changeState(new OffHeliState());
+        }
         return null;
     }
 
