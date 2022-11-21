@@ -20,6 +20,8 @@ import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
 
 import java.text.DecimalFormat;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -75,21 +77,25 @@ class Game extends Pane {
     final static int MIN_CLOUD_RADIUS = 30;
     final static double RAIN_FREQUENCY = 0.6;
 
-    final static Point2D HELIPAD_SIZE = new Point2D(100, 100);
+    final static Point2D HELIPAD_DIMENSIONS = new Point2D(100, 100);
     final static Point2D HELIPAD_POSITION =
-            new Point2D((GAME_WIDTH / 2) - (HELIPAD_SIZE.getX() / 2),
-                    GAME_HEIGHT / 25);
+            new Point2D((GAME_WIDTH / 2),
+                    (GAME_HEIGHT / 25) + (HELIPAD_DIMENSIONS.getY() / 2));
 
     final static Color HELICOPTER_COLOR = Color.YELLOW;
     final static int ROTOR_LENGTH = 80;
-    final static Point2D HELICOPTER_START = new Point2D(GAME_WIDTH / 2,
-            GAME_HEIGHT / 10);
     final static int HELICOPTER_MAX_SPEED = 10;
     final static int HELICOPTER_MIN_SPEED = -2;
-    final static double ROTOR_ACCELERATION = 0.1;
+    final static double ROTOR_ACCELERATION = 0.075;
     final static int HELICOPTER_START_FUEL = 25000;
 
+    final static Color BOUND_FILL = Color.TRANSPARENT;
+    final static Color BOUND_STROKE = Color.YELLOW;
+    final static int BOUND_STROKE_WIDTH = 1;
+
     final static double NANOS_PER_SEC = 1e9;
+
+    private BoundsPane bounds;
 
     private Pond pond;
     private Cloud cloud;
@@ -128,40 +134,50 @@ class Game extends Pane {
         this.helipad = makeHelipad();
         this.helicopter = makeHelicopter();
 
-        this.getChildren().addAll(pond, cloud, helipad, helicopter);
+        bounds = new BoundsPane();
+        bounds.add(cloud, new Circle(
+                cloud.getBoundsInParent().getWidth() / 2));
+        bounds.add(helipad,
+                new Rectangle(helipad.getBoundsInParent().getWidth(),
+                        helipad.getBoundsInParent().getHeight()));
+        bounds.add(helicopter, new Circle(ROTOR_LENGTH / 2));
+        bounds.setVisible(false);
+
+        this.getChildren().addAll(pond, cloud, helipad, helicopter, bounds);
 
         loop = makeGameLoop();
         loop.start();
     }
 
     private static Helicopter makeHelicopter() {
-        Helicopter helicopter = new Helicopter(HELICOPTER_START_FUEL,
-                HELICOPTER_START);
+        Helicopter helicopter = new Helicopter(HELIPAD_POSITION, HELICOPTER_START_FUEL
+        );
         return helicopter;
     }
 
     private static Helipad makeHelipad() {
-        Helipad helipad = new Helipad(HELIPAD_SIZE);
+        Helipad helipad = new Helipad(HELIPAD_POSITION, HELIPAD_DIMENSIONS);
         return helipad;
     }
 
     private static Cloud makeCloud() {
-        Cloud cloud = new Cloud(randomInRange(MIN_CLOUD_RADIUS,
-                MAX_CLOUD_RADIUS), CLOUD_COLOR, CLOUD_TEXT_COLOR);
         Point2D position =
                 randomPositionInBound(new Point2D(0, (GAME_HEIGHT * (0.33))),
                         new Point2D(GAME_WIDTH, GAME_HEIGHT));
+        Cloud cloud = new Cloud(position, randomInRange(MIN_CLOUD_RADIUS,
+                MAX_CLOUD_RADIUS), CLOUD_COLOR, CLOUD_TEXT_COLOR);
         cloud.setTranslateX(position.getX());
         cloud.setTranslateY(position.getY());
         return cloud;
     }
 
     private static Pond makePond() {
-        Pond pond = new Pond(MAX_POND_RADIUS, randomInRange(MIN_POND_RADIUS,
-                MAX_STARTING_POND_RADIUS), POND_COLOR, POND_TEXT_COLOR);
         Point2D position =
                 randomPositionInBound(new Point2D(0, (GAME_HEIGHT * (0.33))),
                         new Point2D(GAME_WIDTH, GAME_HEIGHT));
+        Pond pond = new Pond(position, MAX_POND_RADIUS,
+                randomInRange(MIN_POND_RADIUS,
+                MAX_STARTING_POND_RADIUS), POND_COLOR, POND_TEXT_COLOR);
         pond.setTranslateX(position.getX());
         pond.setTranslateY(position.getY());
         return pond;
@@ -180,6 +196,8 @@ class Game extends Pane {
                 helicopter.update();
                 cloud.update();
                 pond.update();
+
+                bounds.update();
 
                 seedIfNearCloud();
                 rainAndFillPond();
@@ -213,9 +231,7 @@ class Game extends Pane {
 
             private boolean hasMetWinConditions() {
                 return pond.isFull() && helicopter.hasFuel() &&
-                    !helicopter.isEngineOn() && !Shape.intersect(
-                        helicopter.getBoundingCircle(), helipad.getBoundingBox()).
-                        getBoundsInLocal().isEmpty();
+                    !helicopter.isEngineOn() && isHelicopterWithinHelipad();
             }
 
             private Alert makeWinDialog() {
@@ -267,8 +283,9 @@ class Game extends Pane {
             }
 
             private void seedIfNearCloud() {
-                if (!Shape.intersect(helicopter.getBoundingCircle(),
-                        cloud.getBoundingBox()).getBoundsInLocal().isEmpty() &&
+                var helicopterBounds = bounds.getFor(helicopter);
+                var cloudBounds = bounds.getFor(cloud);
+                if (helicopterBounds.collidesWith(cloudBounds) &&
                         allowSeeding) {
                     cloud.seed();
                 }
@@ -307,18 +324,15 @@ class Game extends Pane {
     }
 
     public void handleIKeyPressed() {
-        // TODO update containment logic
-        Shape helicopterHelipadIntersection = Shape.intersect(
-                helicopter.getBoundingCircle(), helipad.getBoundingBox());
-        double widthDifference = Math.abs(
-                helicopterHelipadIntersection.getBoundsInLocal().getWidth() -
-                helicopter.getBoundingCircle().getBoundsInLocal().getWidth());
-        double heightDifference = Math.abs(
-                helicopterHelipadIntersection.getBoundsInLocal().getHeight()
-                - helicopter.getBoundingCircle().getBoundsInLocal().getHeight());
-
-        if (widthDifference < 1e-3 && heightDifference < 1e-3)
+        if (helicopter.isStationary() && isHelicopterWithinHelipad())
             helicopter.toggleIgnition();
+    }
+
+    private boolean isHelicopterWithinHelipad() {
+        Bound helipadBounds = bounds.getFor(helipad);
+        Bound helicopterBounds = bounds.getFor(helicopter);
+
+        return helicopterBounds.containedIn(helipadBounds);
     }
 
     public void handleRKeyPressed() {
@@ -327,18 +341,171 @@ class Game extends Pane {
     }
 
     public void handleBKeyPressed() {
-        cloud.toggleBoundingBox();
-        helipad.toggleBoundingBox();
-        helicopter.toggleBoundingBox();
+        bounds.setVisible(!bounds.isVisible());
+    }
+}
+
+class BoundsPane extends Pane implements Updatable {
+    private List<Bound> bounds;
+
+    public BoundsPane() {
+        bounds = new LinkedList<>();
+    }
+
+    public void add(GameObject objectToBound, Shape boundShape) {
+        Bound bound = new Bound(objectToBound, boundShape);
+        bounds.add(bound);
+        this.getChildren().add(bound);
+
+    }
+
+    public Bound getFor(GameObject gameObject) {
+        for (Bound b : bounds) {
+            if (b.getObjectBeingBounded() == gameObject)
+                return b;
+        }
+        return null;
+    }
+
+    public void remove(Bound bound) {
+        for (Bound b : bounds) {
+            if (bound == b)
+                bounds.remove(b);
+        }
+    }
+
+    @Override
+    public void update() {
+        for (Bound b : bounds)
+            b.update();
+    }
+}
+
+class Bound extends GameObject implements Updatable {
+    private Shape boundShape;
+    private GameObject objectBeingBounded;
+
+    public Bound(GameObject objectToBound, Shape boundShape) {
+        super(objectToBound.getPosition());
+        this.boundShape = boundShape;
+        boundShape.setFill(Game.BOUND_FILL);
+        boundShape.setStroke(Game.BOUND_STROKE);
+        boundShape.setStrokeWidth(Game.BOUND_STROKE_WIDTH);
+
+        // TODO: delegate to RectangleBound subclass; inappropriate here
+        if (boundShape instanceof Rectangle) {
+            this.boundShape.setTranslateX(
+                    -((Rectangle) boundShape).getWidth() / 2);
+            this.boundShape.setTranslateY(
+                    -((Rectangle) boundShape).getHeight() / 2);
+        }
+
+        this.getChildren().add(this.boundShape);
+
+        objectBeingBounded = objectToBound;
+
+        this.setTranslateX(objectToBound.getPosition().getX());
+        this.setTranslateY(objectToBound.getPosition().getY());
+    }
+
+    @Override
+    public void update() {
+        this.setPosition(new Point2D(objectBeingBounded.getPosition().getX(),
+                objectBeingBounded.getPosition().getY()));
+        this.setTranslateX(this.getPosition().getX());
+        this.setTranslateY(this.getPosition().getY());
+    }
+
+    public boolean collidesWith(Bound other) {
+        return !Shape.intersect(this.getBoundShape(), other.getBoundShape())
+                .getBoundsInLocal().isEmpty();
+    }
+
+    public boolean containedIn(Bound container) {
+        Shape containerShape = container.boundShape;
+        double containerMinX = container.getPosition().getX() -
+                containerShape.getBoundsInLocal().getWidth() / 2;
+        double containerMaxX = container.getPosition().getX() +
+                containerShape.getBoundsInLocal().getWidth() / 2;
+        double containerMinY = container.getPosition().getY() -
+                containerShape.getBoundsInLocal().getHeight() / 2;
+        double containerMaxY = container.getPosition().getY() +
+                containerShape.getBoundsInLocal().getHeight() / 2;
+
+        double thisMinX = getPosition().getX() -
+                boundShape.getBoundsInLocal().getWidth() / 2;
+        double thisMaxX = getPosition().getX() +
+                boundShape.getBoundsInLocal().getWidth() / 2;
+        double thisMinY = getPosition().getY() -
+                boundShape.getBoundsInLocal().getHeight() / 2;
+        double thisMaxY = getPosition().getY() +
+                boundShape.getBoundsInLocal().getHeight() / 2;
+
+        return containerMinX < thisMinX &&
+                containerMaxX > thisMaxX &&
+                containerMinY < thisMinY &&
+                containerMaxY > thisMaxY;
+    }
+
+    public GameObject getObjectBeingBounded() {
+        return objectBeingBounded;
+    }
+
+    public Shape getBoundShape() {
+        return boundShape;
+    }
+}
+
+class RectangleBound extends Bound {
+
+    public RectangleBound(GameObject objectToBound, Rectangle boundShape) {
+        super(objectToBound, boundShape);
+//        centerAboutOrigin();
+    }
+
+    private void centerAboutOrigin() {
+        // TODO: see Bound constructor todo
+//        Shape rectangleBound = (Shape) super.getChildren().get(0);
+//        rectangleBound.setTranslateX(- rectangleBound.getBoundsInLocal()
+//                .getWidth() / 2);
+//        rectangleBound.setTranslateY(- rectangleBound.getBoundsInLocal()
+//                .getHeight() / 2);
     }
 }
 
 /**
+ * Used for helicopter whose bound is formed by its spinning blade
+ */
+class CircleBound extends Bound {
+
+    public CircleBound(GameObject objectToBound, Circle boundShape) {
+        super(objectToBound, boundShape);
+    }
+
+}
+
+/**
  * Is-a Group to treat game objects as Node objects to be put straight onto
- * scene graph.
+ * scene graph. Position treated as center of object (like Circle; unlike
+ * Rectangle, etc.). So GameObjects who aren't Circles will have to translate
+ * their x and y by half their width and height respectively. Standardizing
+ * position attribute of all GameObjects like this makes it consistent and
+ * simplifies distance calculations between GameObjects.
  */
 abstract class GameObject extends Group {
+    private Point2D position;
 
+    public GameObject(Point2D startPosition) {
+        position = startPosition;
+    }
+
+    public Point2D getPosition() {
+        return position;
+    }
+
+    public void setPosition(Point2D position) {
+        this.position = position;
+    }
 }
 
 class Pond extends GameObject implements Updatable {
@@ -347,8 +514,9 @@ class Pond extends GameObject implements Updatable {
     private GameText percentFullText;
     private int percentFull;
 
-    public Pond(double maxRadius, double currentRadius,
+    public Pond(Point2D startPosition, double maxRadius, double currentRadius,
                 final Color fill, final Color textFill) {
+        super(startPosition);
         this.maxRadius = maxRadius;
         this.currentRadius = currentRadius;
         pondCircle = new Circle(currentRadius, fill);
@@ -361,8 +529,7 @@ class Pond extends GameObject implements Updatable {
     private void makePercentFullText(double maxRadius, double currentRadius,
                                      Color textFill) {
         percentFull = (int) ((currentRadius / maxRadius) * 100);
-        percentFullText = new GameText(percentFull + "%",
-                textFill);
+        percentFullText = new GameText(percentFull + "%", textFill);
 
         Bounds fpBounds = percentFullText.getBoundsInParent();
         percentFullText.setTranslateX(
@@ -399,10 +566,10 @@ class Cloud extends GameObject implements Updatable {
     private Color fill;
     private GameText percentSaturatedText;
     private int seedPercentage;
-    private Rectangle bounds;
-    private boolean showBounds;
 
-    public Cloud(double radius, Color fill, Color textFill) {
+    public Cloud(Point2D initialPosition, double radius, Color fill,
+                 Color textFill) {
+        super(initialPosition);
         this.fill = fill;
         cloudCircle = new Circle(radius, fill);
 
@@ -410,8 +577,6 @@ class Cloud extends GameObject implements Updatable {
         makePercentSaturatedText(textFill);
 
         this.getChildren().addAll(cloudCircle, percentSaturatedText);
-
-        makeBoundingBox();
     }
 
     private void makePercentSaturatedText(Color textFill) {
@@ -426,33 +591,12 @@ class Cloud extends GameObject implements Updatable {
                 + fpBounds.getHeight() / 2);
     }
 
-    private void makeBoundingBox() {
-        bounds = new Rectangle(this.getBoundsInParent().getWidth(),
-                this.getBoundsInParent().getHeight());
-        bounds.setTranslateX(bounds.getTranslateX() - bounds.getWidth() / 2);
-        bounds.setTranslateY(bounds.getTranslateY() - bounds.getHeight() / 2);
-        bounds.setFill(Color.TRANSPARENT);
-        bounds.setStrokeWidth(1);
-        bounds.setStroke(Color.YELLOW);
-        bounds.setVisible(false);
-        this.getChildren().add(bounds);
-    }
-
     @Override
     public void update() {
         if (cloudCircle.getFill() != fill) {
             cloudCircle.setFill(fill);
             percentSaturatedText.setText(seedPercentage + "%");
         }
-    }
-
-    public void toggleBoundingBox() {
-        showBounds = !showBounds;
-        bounds.setVisible(showBounds);
-    }
-
-    public Rectangle getBoundingBox() {
-        return bounds;
     }
 
     public void seed() {
@@ -481,77 +625,64 @@ class Cloud extends GameObject implements Updatable {
 }
 
 /**
- * Represents starting/ending location for helicopter.
+ * The starting/ending location for helicopter. Represented as an image.
  */
 class Helipad extends GameObject {
-    private Rectangle bounds;
-    private boolean showBounds;
 
-    public Helipad(Point2D size) {
-        ImageView image = new ImageView(new Image("helipad_textured.png"));
-        image.setFitHeight(size.getY());
-        image.setFitWidth(size.getX());
-        this.getChildren().add(image);
+    public Helipad(Point2D initialPosition, Point2D dimensions) {
+        super(initialPosition);
+
+        loadAndSetupImage(dimensions);
 
         this.getTransforms().add(new Translate(Game.HELIPAD_POSITION.getX(),
                 Game.HELIPAD_POSITION.getY()));
-
-        makeBoundingBox(size);
     }
 
-    private void makeBoundingBox(Point2D size) {
-        bounds = new Rectangle(size.getX(), size.getY());
-        bounds.setFill(Color.TRANSPARENT);
-        bounds.setStroke(Color.YELLOW);
-        bounds.setStrokeWidth(1);
-        bounds.setVisible(false);
-        this.getChildren().add(bounds);
+    private void loadAndSetupImage(Point2D dimensions) {
+        ImageView image = new ImageView(new Image("helipad_textured.png"));
+        image.setFitHeight(dimensions.getY());
+        image.setFitWidth(dimensions.getX());
+        centerAboutOrigin(dimensions, image);
+        this.getChildren().add(image);
     }
 
-    public void toggleBoundingBox() {
-        showBounds = !showBounds;
-        bounds.setVisible(showBounds);
-    }
-
-    public Rectangle getBoundingBox() {
-        return bounds;
+    private static void centerAboutOrigin(
+            Point2D dimensions, ImageView image) {
+        image.setTranslateX(- dimensions.getX() / 2);
+        image.setTranslateY(- dimensions.getY() / 2);
     }
 }
 
 class Helicopter extends GameObject implements Updatable {
     final static int FUEL_CONSUMPTION_RATE = 5;
     private GameText fuelGauge;
-    private Circle bounds;
-    private Point2D position;
     private double heading;
     private double speed;
     private int fuel;
     private boolean isActive;
-    private boolean showBounds;
 
     private HeliBody heliBody;
     private HeliBlade heliBlade;
     private HeliState state;
 
-    public Helicopter(int fuel, Point2D position) {
-        makeHelicopterShape();
+    public Helicopter(Point2D initialPosition, int fuel) {
+        super(initialPosition);
+        makeAndAddHelicopterShape();
         makeFuelGauge(fuel);
-        makeBoundingBox();
-        this.getChildren().addAll(fuelGauge, bounds);
+        this.getChildren().addAll(fuelGauge);
 
-        this.getTransforms().add(new Translate(position.getX(),
-                position.getY()));
+        this.getTransforms().add(new Translate(initialPosition.getX(),
+                initialPosition.getY()));
 
         this.heading = 0;
         this.speed = 0;
         this.fuel = fuel;
-        this.position = position;
         this.isActive = false;
 
         state = new OffHeliState();
     }
 
-    private void makeHelicopterShape() {
+    private void makeAndAddHelicopterShape() {
         heliBody = new HeliBody();
         heliBlade = new HeliBlade();
         this.getChildren().addAll(heliBody, heliBlade);
@@ -563,30 +694,23 @@ class Helicopter extends GameObject implements Updatable {
         fuelGauge.setTranslateX(-25);
     }
 
-    private void makeBoundingBox() {
-        bounds = new Circle(Game.ROTOR_LENGTH / 2);
-        bounds.setFill(Color.TRANSPARENT);
-        bounds.setStrokeWidth(1);
-        bounds.setStroke(Color.YELLOW);
-        bounds.setVisible(false);
-    }
-
     @Override
     public void update() {
-        Point2D newPosition = state.update(position, heading, speed,
+        Point2D newPosition = state.update(this.getPosition(), heading, speed,
                 heliBlade, this);
 
         if (newPosition != null) {
-            position = newPosition;
+            this.setPosition(newPosition);
             this.getTransforms().clear();
             this.getTransforms().addAll(
-                    new Translate(position.getX(), position.getY()),
+                    new Translate(this.getPosition().getX(), this.getPosition().getY()),
                     new Rotate(-heading));
         }
 
         consumeFuel();
     }
 
+    // TODO add to state
     private void consumeFuel() {
         if (isActive && fuel <= Math.abs(speed) + FUEL_CONSUMPTION_RATE) {
             fuel = 0;
@@ -603,7 +727,6 @@ class Helicopter extends GameObject implements Updatable {
 //            isActive = !isActive;
     }
 
-
     public void turnLeft() {
         state.turnLeft(this);
     }
@@ -618,15 +741,6 @@ class Helicopter extends GameObject implements Updatable {
 
     public void decreaseSpeed() {
         state.decreaseSpeed(this);
-    }
-
-    public void toggleBoundingBox() {
-        showBounds = !showBounds;
-        bounds.setVisible(showBounds);
-    }
-
-    public Circle getBoundingCircle() {
-        return bounds;
     }
 
     public boolean hasFuel() {
@@ -660,10 +774,15 @@ class Helicopter extends GameObject implements Updatable {
     public void setHeading(double heading) {
         this.heading = heading;
     }
+
+    // TODO: check if in OffHeliState instead of checking speed
+    public boolean isStationary() {
+        return Math.abs(speed) < 1e-3;
+//        return state instanceof OffHeliState;
+    }
 }
 
-class HeliBody extends GameObject {
-
+class HeliBody extends Group {
     public static final int SIZE = 75;
 
     public HeliBody() {
@@ -671,14 +790,18 @@ class HeliBody extends GameObject {
                 new Image("helibody_2x_transparent.png"));
         image.setFitHeight(SIZE);
         image.setFitWidth(SIZE);
-        this.setTranslateX(-SIZE/2);
-        this.setTranslateY(-SIZE/2);
+        centerAboutOrigin();
         this.setRotate(180);
         this.getChildren().add(image);
     }
+
+    private void centerAboutOrigin() {
+        this.setTranslateX(-SIZE/2);
+        this.setTranslateY(-SIZE/2);
+    }
 }
 
-class HeliBlade extends GameObject {
+class HeliBlade extends Group {
     public static final int MIN_SPEED = 0;
     public static final int MAX_SPEED = 15;
 
@@ -713,9 +836,13 @@ class HeliBlade extends GameObject {
                 new Image("heliblade_2wing_transparent.png"));
         image.setFitHeight(Game.ROTOR_LENGTH);
         image.setFitWidth(Game.ROTOR_LENGTH);
+        centerAboutOrigin();
+        this.getChildren().add(image);
+    }
+
+    private void centerAboutOrigin() {
         this.setTranslateX(-Game.ROTOR_LENGTH / 2);
         this.setTranslateY(-Game.ROTOR_LENGTH / 2);
-        this.getChildren().add(image);
     }
 
     public void spinUp() {
@@ -906,7 +1033,7 @@ interface Updatable {
  * Since the game coordinate space is being scaled by -1 (to convert to
  * quadrant I), any text will have to be scaled accordingly.
  */
-class GameText extends GameObject {
+class GameText extends Group {
     private Text text;
 
     public GameText(final String string, final Color fill) {
