@@ -65,24 +65,24 @@ public class GameApp extends Application {
  * Is a Pane to serve as the container for all game objects.
  */
 class Game extends Pane {
-    public static final int GAME_HEIGHT = 800;
     public static final int GAME_WIDTH = 800;
+    public static final int GAME_HEIGHT = 800;
 
     public static final int NUM_PONDS = 3;
     public static final Color POND_COLOR = Color.BLUE;
     public static final Color POND_TEXT_COLOR = Color.WHITE;
+    public static final int MIN_POND_RADIUS = 5;
     public static final int MAX_POND_RADIUS = 50;
     public static final int MAX_STARTING_POND_RADIUS =
             (int) (MAX_POND_RADIUS * 0.30);
-    public static final int MIN_POND_RADIUS = 5;
     public static final int TOTAL_POND_CAPACITY_TO_WIN = 80;
 
     public static final int MIN_CLOUDS = 3;
     public static final int MAX_CLOUDS = 5;
     public static final Color CLOUD_COLOR = Color.WHITE;
     public static final Color CLOUD_TEXT_COLOR = Color.BLUE;
-    public static final int MAX_CLOUD_RADIUS = 70;
     public static final int MIN_CLOUD_RADIUS = 30;
+    public static final int MAX_CLOUD_RADIUS = 70;
     public static final double RAIN_FREQUENCY = 0.6;
 
     public static final Point2D HELIPAD_DIMENSIONS = new Point2D(100, 100);
@@ -93,8 +93,8 @@ class Game extends Pane {
     public static final Color FUEL_GAUGE_COLOR = Color.MAROON;
     public static final int HELIBODY_SIZE = 75;
     public static final int ROTOR_LENGTH = 80;
-    public static final int HELICOPTER_MAX_SPEED = 10;
     public static final int HELICOPTER_MIN_SPEED = -2;
+    public static final int HELICOPTER_MAX_SPEED = 10;
     public static final int ROTOR_MIN_SPEED = 0;
     public static final int ROTOR_MAX_SPEED = 15;
     public static final double ROTOR_ACCELERATION = 0.075;
@@ -113,7 +113,7 @@ class Game extends Pane {
     private Helicopter helicopter;
     private BoundsPane bounds;
 
-    private boolean isSeedingAllowed;
+    private boolean isHelicopterTryingToSeed;
     private AnimationTimer loop;
 
     public static double randomInRange(double min, double max) {
@@ -147,20 +147,20 @@ class Game extends Pane {
         initBounds();
         this.getChildren().addAll(ponds, clouds, helipad, helicopter, bounds);
 
-        loop = makeGameLoop();
+        makeGameLoop();
         loop.start();
     }
 
     private void initBounds() {
         bounds = new BoundsPane();
         for (Cloud c : clouds)
-            bounds.add(c, new Circle(
-                    c.getBoundsInParent().getWidth() / 2));
-        bounds.add(helipad,
-                new Rectangle(helipad.getBoundsInParent().getWidth(),
-                        helipad.getBoundsInParent().getHeight()));
-        bounds.add(helicopter, new Circle(ROTOR_LENGTH / 2));
-        bounds.setVisible(false);
+            bounds.add(new CircleBound(c,
+                    new Circle(c.getBoundsInParent().getWidth() / 2)));
+        bounds.add(new RectangleBound(helipad, new Rectangle(
+                helipad.getBoundsInParent().getWidth(),
+                helipad.getBoundsInParent().getHeight())));
+        bounds.add(new CircleBound(helicopter,
+                new Circle(ROTOR_LENGTH / 2)));
     }
 
     private void initClouds() {
@@ -209,8 +209,8 @@ class Game extends Pane {
         return pond;
     }
 
-    private AnimationTimer makeGameLoop() {
-        AnimationTimer gameLoop = new AnimationTimer() {
+    private void makeGameLoop() {
+        AnimationTimer loop = new AnimationTimer() {
             private double old = -1;
             private double timer = 0;
 
@@ -266,9 +266,9 @@ class Game extends Pane {
                 DecimalFormat decimalFormat =
                         new DecimalFormat("###,###");
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                    "You have won! You scored " +
+                    "You won with a score of " +
                             decimalFormat.format(helicopter.getRemainingFuel())
-                            + ". Play again?");
+                            + " points! Play again?");
                 alert.setTitle("Confirmation");
                 alert.setHeaderText("Confirmation");
 
@@ -290,7 +290,7 @@ class Game extends Pane {
 
             private Alert makeLoseDialog() {
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                        "You have lost! Play again?");
+                        "You lost! Play again?");
                 alert.setTitle("Confirmation");
                 alert.setHeaderText("Confirmation");
 
@@ -317,14 +317,13 @@ class Game extends Pane {
                 var helicopterBounds = bounds.getFor(helicopter);
                 for (Cloud c : clouds) {
                     var cBound = bounds.getFor(c);
-                    if (!Shape.intersect(helicopterBounds.getBoundShape(),
-                        cBound.getBoundShape()).getBoundsInLocal().isEmpty()
-                            && isSeedingAllowed) {
+                    if (helicopterBounds.collidesWith(cBound)
+                            && isHelicopterTryingToSeed) {
                         c.seed();
                         break;
                     }
                 }
-                isSeedingAllowed = false;
+                isHelicopterTryingToSeed = false;
             }
 
             private double calculateDelta(long now) {
@@ -335,14 +334,11 @@ class Game extends Pane {
                 return delta;
             }
         };
-        return gameLoop;
+        this.loop = loop;
     }
 
     private boolean isHelicopterWithinHelipad() {
-        Bound helipadBounds = bounds.getFor(helipad);
-        Bound helicopterBounds = bounds.getFor(helicopter);
-
-        return helicopterBounds.containedIn(helipadBounds);
+        return (bounds.getFor(helicopter)).containedIn(bounds.getFor(helipad));
     }
 
     public void handleLeftKeyPressed() {
@@ -362,7 +358,7 @@ class Game extends Pane {
     }
 
     public void handleSpaceKeyPressed() {
-        isSeedingAllowed = true;
+        isHelicopterTryingToSeed = true;
     }
 
     public void handleIKeyPressed() {
@@ -376,7 +372,7 @@ class Game extends Pane {
     }
 
     public void handleBKeyPressed() {
-        bounds.setVisible(!bounds.isVisible());
+        bounds.toggleVisibility();
     }
 }
 
@@ -385,18 +381,22 @@ class BoundsPane extends Pane implements Updatable {
 
     public BoundsPane() {
         bounds = new LinkedList<>();
+        this.setVisible(false);
     }
 
-    public void add(GameObject objectToBound, Shape boundShape) {
-        Bound bound = new Bound(objectToBound, boundShape);
-        bounds.add(bound);
-        this.getChildren().add(bound);
+    public void add(CircleBound circleBound) {
+        bounds.add(circleBound);
+        this.getChildren().add(circleBound);
+    }
 
+    public void add(RectangleBound rectangleBound) {
+        bounds.add(rectangleBound);
+        this.getChildren().add(rectangleBound);
     }
 
     public Bound getFor(GameObject gameObject) {
         for (Bound b : bounds) {
-            if (b.getObjectBeingBounded() == gameObject)
+            if (b.getBoundedObject() == gameObject)
                 return b;
         }
         return null;
@@ -414,39 +414,41 @@ class BoundsPane extends Pane implements Updatable {
         for (Bound b : bounds)
             b.update();
     }
+
+    public void toggleVisibility() {
+        this.setVisible(!this.isVisible());
+    }
 }
 
+/**
+ * Holds a reference to the object it's bounding so that it can be garbage
+ * collected along with its object.
+ */
 class Bound extends GameObject implements Updatable {
+    private GameObject boundedObject;
     private Shape boundShape;
-    private GameObject objectBeingBounded;
 
     public Bound(GameObject objectToBound, Shape boundShape) {
         super(objectToBound.getPosition());
-        this.boundShape = boundShape;
-        boundShape.setFill(Game.BOUND_FILL);
-        boundShape.setStroke(Game.BOUND_STROKE);
-        boundShape.setStrokeWidth(Game.BOUND_STROKE_WIDTH);
+        setBoundShapeDefaultProperties(boundShape);
 
-        // TODO: delegate to RectangleBound subclass; inappropriate here
-        if (boundShape instanceof Rectangle) {
-            this.boundShape.setTranslateX(
-                    -((Rectangle) boundShape).getWidth() / 2);
-            this.boundShape.setTranslateY(
-                    -((Rectangle) boundShape).getHeight() / 2);
-        }
-
-        this.getChildren().add(this.boundShape);
-
-        objectBeingBounded = objectToBound;
-
+        boundedObject = objectToBound;
         this.setTranslateX(objectToBound.getPosition().getX());
         this.setTranslateY(objectToBound.getPosition().getY());
     }
 
+    private void setBoundShapeDefaultProperties(Shape boundShape) {
+        this.boundShape = boundShape;
+        boundShape.setFill(Game.BOUND_FILL);
+        boundShape.setStroke(Game.BOUND_STROKE);
+        boundShape.setStrokeWidth(Game.BOUND_STROKE_WIDTH);
+        this.getChildren().add(this.boundShape);
+    }
+
     @Override
     public void update() {
-        this.setPosition(new Point2D(objectBeingBounded.getPosition().getX(),
-                objectBeingBounded.getPosition().getY()));
+        this.setPosition(new Point2D(boundedObject.getPosition().getX(),
+                boundedObject.getPosition().getY()));
         this.setTranslateX(this.getPosition().getX());
         this.setTranslateY(this.getPosition().getY());
     }
@@ -482,8 +484,8 @@ class Bound extends GameObject implements Updatable {
                 containerMaxY > thisMaxY;
     }
 
-    public GameObject getObjectBeingBounded() {
-        return objectBeingBounded;
+    public GameObject getBoundedObject() {
+        return boundedObject;
     }
 
     public Shape getBoundShape() {
@@ -495,16 +497,14 @@ class RectangleBound extends Bound {
 
     public RectangleBound(GameObject objectToBound, Rectangle boundShape) {
         super(objectToBound, boundShape);
-//        centerAboutOrigin();
+        centerAboutOrigin();
     }
 
     private void centerAboutOrigin() {
-        // TODO: see Bound constructor todo
-//        Shape rectangleBound = (Shape) super.getChildren().get(0);
-//        rectangleBound.setTranslateX(- rectangleBound.getBoundsInLocal()
-//                .getWidth() / 2);
-//        rectangleBound.setTranslateY(- rectangleBound.getBoundsInLocal()
-//                .getHeight() / 2);
+        getBoundShape().setTranslateX(
+                -((Rectangle) getBoundShape()).getWidth() / 2);
+        getBoundShape().setTranslateY(
+                -((Rectangle) getBoundShape()).getHeight() / 2);
     }
 }
 
@@ -516,7 +516,6 @@ class CircleBound extends Bound {
     public CircleBound(GameObject objectToBound, Circle boundShape) {
         super(objectToBound, boundShape);
     }
-
 }
 
 /**
@@ -568,7 +567,7 @@ class Ponds extends Pane implements Updatable {
         return totalCapacity;
     }
 
-    // TODO
+    // TODO only those ponds within range should be filled
     public void fill() {
         for (Pond p : ponds)
             p.fill();
@@ -811,8 +810,6 @@ class Helicopter extends GameObject implements Updatable {
 
     public void toggleIgnition() {
         state = state.toggleIgnition(heliBlade);
-//        if (Math.abs(speed) < 1e-3)
-//            isActive = !isActive;
     }
 
     public void turnLeft() {
@@ -836,7 +833,8 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     public boolean isEngineOff() {
-        return state instanceof OffHeliState;
+        return state instanceof OffHeliState
+                || state instanceof StoppingHeliState;
     }
 
     public double getRemainingFuel() {
@@ -872,18 +870,22 @@ class Helicopter extends GameObject implements Updatable {
 
 class HeliBody extends Group {
     public HeliBody() {
+        loadAndSetImage();
+    }
+
+    private void loadAndSetImage() {
         ImageView image = new ImageView(
                 new Image("helibody_2x_transparent.png"));
         image.setFitHeight(Game.HELIBODY_SIZE);
         image.setFitWidth(Game.HELIBODY_SIZE);
-        centerAboutOrigin();
-        this.setRotate(180);
+        centerAboutOriginAndFlip();
         this.getChildren().add(image);
     }
 
-    private void centerAboutOrigin() {
+    private void centerAboutOriginAndFlip() {
         this.setTranslateX(-Game.HELIBODY_SIZE /2);
         this.setTranslateY(-Game.HELIBODY_SIZE /2);
+        this.setRotate(180);
     }
 }
 
@@ -893,7 +895,6 @@ class HeliBlade extends Group {
 
     public HeliBlade() {
         loadAndSetImage();
-        rotationalSpeed = 0;
         startAnimation();
     }
 
@@ -902,13 +903,18 @@ class HeliBlade extends Group {
 
             @Override
             public void handle(long now) {
-                if (isSpinning && rotationalSpeed < Game.ROTOR_MAX_SPEED)
-                    rotationalSpeed += Game.ROTOR_ACCELERATION;
-                else if (!isSpinning && rotationalSpeed > Game.ROTOR_MIN_SPEED) {
-                    rotationalSpeed -= Game.ROTOR_ACCELERATION;
-                }
+                determineAndUpdateSpeed();
                 HeliBlade.super.setRotate(
                         HeliBlade.super.getRotate() + rotationalSpeed);
+            }
+
+            private void determineAndUpdateSpeed() {
+                if (isSpinning && rotationalSpeed < Game.ROTOR_MAX_SPEED)
+                    rotationalSpeed += Game.ROTOR_ACCELERATION;
+                else if (!isSpinning && rotationalSpeed > Game.ROTOR_MIN_SPEED)
+                    rotationalSpeed =
+                            (rotationalSpeed - Game.ROTOR_ACCELERATION >= 0) ?
+                            (rotationalSpeed - Game.ROTOR_ACCELERATION) : 0;
             }
         };
         loop.start();
@@ -924,8 +930,8 @@ class HeliBlade extends Group {
     }
 
     private void centerAboutOrigin() {
-        this.setTranslateX(-Game.ROTOR_LENGTH / 2);
-        this.setTranslateY(-Game.ROTOR_LENGTH / 2);
+        this.setTranslateX(- Game.ROTOR_LENGTH / 2);
+        this.setTranslateY(- Game.ROTOR_LENGTH / 2);
     }
 
     public void spinUp() {
@@ -1113,7 +1119,8 @@ class ReadyHeliState implements HeliState {
 }
 
 /**
- * Objects will be updated from the main game timer.
+ * Not all GameObjects need to update, but those that require so will be
+ * updated from Game loop.
  */
 interface Updatable {
     void update();
@@ -1122,7 +1129,7 @@ interface Updatable {
 
 /**
  * Since the game coordinate space is being scaled by -1 (to convert to
- * quadrant I), any text will have to be scaled accordingly.
+ * quadrant I from IV), any text will have to be scaled accordingly.
  */
 class GameText extends Group {
     private Text text;
@@ -1143,9 +1150,5 @@ class GameText extends Group {
 
     public void setText(String string) {
         text.setText(string);
-    }
-
-    public String getText() {
-        return text.getText();
     }
 }
