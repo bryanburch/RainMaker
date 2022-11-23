@@ -22,6 +22,7 @@ import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
 
 import java.text.DecimalFormat;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
@@ -64,53 +65,55 @@ public class GameApp extends Application {
  * Is a Pane to serve as the container for all game objects.
  */
 class Game extends Pane {
-    final static int GAME_HEIGHT = 800;
-    final static int GAME_WIDTH = 800;
+    public static final int GAME_HEIGHT = 800;
+    public static final int GAME_WIDTH = 800;
 
-    final static int NUM_PONDS = 3;
-    final static Color POND_COLOR = Color.BLUE;
-    final static Color POND_TEXT_COLOR = Color.WHITE;
-    final static int MAX_POND_RADIUS = 50;
-    final static int MAX_STARTING_POND_RADIUS = (int) (MAX_POND_RADIUS * 0.30);
-    final static int MIN_POND_RADIUS = 5;
+    public static final int NUM_PONDS = 3;
+    public static final Color POND_COLOR = Color.BLUE;
+    public static final Color POND_TEXT_COLOR = Color.WHITE;
+    public static final int MAX_POND_RADIUS = 50;
+    public static final int MAX_STARTING_POND_RADIUS =
+            (int) (MAX_POND_RADIUS * 0.30);
+    public static final int MIN_POND_RADIUS = 5;
     public static final int TOTAL_POND_CAPACITY_TO_WIN = 80;
 
-    final static Color CLOUD_COLOR = Color.WHITE;
-    final static Color CLOUD_TEXT_COLOR = Color.BLUE;
-    final static int MAX_CLOUD_RADIUS = 70;
-    final static int MIN_CLOUD_RADIUS = 30;
-    final static double RAIN_FREQUENCY = 0.6;
+    public static final int MIN_CLOUDS = 3;
+    public static final int MAX_CLOUDS = 5;
+    public static final Color CLOUD_COLOR = Color.WHITE;
+    public static final Color CLOUD_TEXT_COLOR = Color.BLUE;
+    public static final int MAX_CLOUD_RADIUS = 70;
+    public static final int MIN_CLOUD_RADIUS = 30;
+    public static final double RAIN_FREQUENCY = 0.6;
 
-    final static Point2D HELIPAD_DIMENSIONS = new Point2D(100, 100);
-    final static Point2D HELIPAD_POSITION =
+    public static final Point2D HELIPAD_DIMENSIONS = new Point2D(100, 100);
+    public static final Point2D HELIPAD_POSITION =
             new Point2D((GAME_WIDTH / 2),
                     (GAME_HEIGHT / 25) + (HELIPAD_DIMENSIONS.getY() / 2));
 
-    final static Color HELICOPTER_COLOR = Color.MAROON;
-    final static int HELIBODY_SIZE = 75;
-    final static int ROTOR_LENGTH = 80;
-    final static int HELICOPTER_MAX_SPEED = 10;
-    final static int HELICOPTER_MIN_SPEED = -2;
-    final static int ROTOR_MIN_SPEED = 0;
-    final static int ROTOR_MAX_SPEED = 15;
-    final static double ROTOR_ACCELERATION = 0.075;
-    final static int HELICOPTER_START_FUEL = 25000;
-    final static int FUEL_CONSUMPTION_RATE = 5;
+    public static final Color FUEL_GAUGE_COLOR = Color.MAROON;
+    public static final int HELIBODY_SIZE = 75;
+    public static final int ROTOR_LENGTH = 80;
+    public static final int HELICOPTER_MAX_SPEED = 10;
+    public static final int HELICOPTER_MIN_SPEED = -2;
+    public static final int ROTOR_MIN_SPEED = 0;
+    public static final int ROTOR_MAX_SPEED = 15;
+    public static final double ROTOR_ACCELERATION = 0.075;
+    public static final int HELICOPTER_START_FUEL = 25000;
+    public static final int FUEL_CONSUMPTION_RATE = 5;
 
-    final static Color BOUND_FILL = Color.TRANSPARENT;
-    final static Color BOUND_STROKE = Color.YELLOW;
-    final static int BOUND_STROKE_WIDTH = 1;
+    public static final Color BOUND_FILL = Color.TRANSPARENT;
+    public static final Color BOUND_STROKE = Color.YELLOW;
+    public static final int BOUND_STROKE_WIDTH = 1;
 
-    final static double NANOS_PER_SEC = 1e9;
+    public static final double NANOS_PER_SEC = 1e9;
 
     private Ponds ponds;
     private Clouds clouds;
-    private BoundsPane bounds;
-
-    private Cloud cloud;
     private Helipad helipad;
     private Helicopter helicopter;
-    private boolean allowSeeding;
+    private BoundsPane bounds;
+
+    private boolean isSeedingAllowed;
     private AnimationTimer loop;
 
     public static double randomInRange(double min, double max) {
@@ -137,32 +140,33 @@ class Game extends Pane {
 
     private void init() {
         this.getChildren().clear();
-
         initPonds();
-
-        /* Init clouds */
-        this.cloud = makeCloud();
-
-        /* Init helipad */
+        initClouds();
         this.helipad = makeHelipad();
-
-        /* Init helicopter */
         this.helicopter = makeHelicopter();
+        initBounds();
+        this.getChildren().addAll(ponds, clouds, helipad, helicopter, bounds);
 
-        /* Init bounds */
+        loop = makeGameLoop();
+        loop.start();
+    }
+
+    private void initBounds() {
         bounds = new BoundsPane();
-        bounds.add(cloud, new Circle(
-                cloud.getBoundsInParent().getWidth() / 2));
+        for (Cloud c : clouds)
+            bounds.add(c, new Circle(
+                    c.getBoundsInParent().getWidth() / 2));
         bounds.add(helipad,
                 new Rectangle(helipad.getBoundsInParent().getWidth(),
                         helipad.getBoundsInParent().getHeight()));
         bounds.add(helicopter, new Circle(ROTOR_LENGTH / 2));
         bounds.setVisible(false);
+    }
 
-        this.getChildren().addAll(ponds, cloud, helipad, helicopter, bounds);
-
-        loop = makeGameLoop();
-        loop.start();
+    private void initClouds() {
+        clouds = new Clouds();
+        for (int i = 0; i < randomInRange(MIN_CLOUDS - 1, MAX_CLOUDS); i++)
+            clouds.add(makeCloud());
     }
 
     private void initPonds() {
@@ -216,13 +220,13 @@ class Game extends Pane {
                 timer += delta;
 
                 helicopter.update();
-                cloud.update();
+                clouds.update();
                 ponds.update();
 
                 bounds.update();
 
                 seedIfNearCloud();
-                rainAndFillPond();
+                fillPondsWithRain();
 
                 showLoseDialogIfConditionsMet();
                 showWinDialogIfConditionsMet();
@@ -296,11 +300,14 @@ class Game extends Pane {
                 return alert;
             }
 
-            private void rainAndFillPond() {
+            // TODO fill pond only if cloud(s) within range
+            private void fillPondsWithRain() {
                 if (timer >= RAIN_FREQUENCY) {
-                    boolean hasRained = cloud.rain();
-                    if (hasRained) {
-                        ponds.fill();
+                    for (Cloud c : clouds) {
+                        boolean hasRained = c.rain();
+                        if (hasRained) {
+                            ponds.fill();
+                        }
                     }
                     timer = 0;
                 }
@@ -308,12 +315,16 @@ class Game extends Pane {
 
             private void seedIfNearCloud() {
                 var helicopterBounds = bounds.getFor(helicopter);
-                var cloudBounds = bounds.getFor(cloud);
-                if (helicopterBounds.collidesWith(cloudBounds) &&
-                        allowSeeding) {
-                    cloud.seed();
+                for (Cloud c : clouds) {
+                    var cBound = bounds.getFor(c);
+                    if (!Shape.intersect(helicopterBounds.getBoundShape(),
+                        cBound.getBoundShape()).getBoundsInLocal().isEmpty()
+                            && isSeedingAllowed) {
+                        c.seed();
+                        break;
+                    }
                 }
-                allowSeeding = false;
+                isSeedingAllowed = false;
             }
 
             private double calculateDelta(long now) {
@@ -351,7 +362,7 @@ class Game extends Pane {
     }
 
     public void handleSpaceKeyPressed() {
-        allowSeeding = true;
+        isSeedingAllowed = true;
     }
 
     public void handleIKeyPressed() {
@@ -621,7 +632,7 @@ class Pond extends GameObject implements Updatable {
     }
 }
 
-class Clouds extends Pane implements Updatable {
+class Clouds extends Pane implements Updatable, Iterable<Cloud> {
     private List<Cloud> clouds;
 
     public Clouds() {
@@ -630,12 +641,18 @@ class Clouds extends Pane implements Updatable {
 
     public void add(Cloud cloud) {
         clouds.add(cloud);
+        this.getChildren().add(cloud);
     }
 
     @Override
     public void update() {
         for (Cloud c : clouds)
             c.update();
+    }
+
+    @Override
+    public Iterator<Cloud> iterator() {
+        return clouds.iterator();
     }
 }
 
@@ -764,7 +781,7 @@ class Helicopter extends GameObject implements Updatable {
     }
 
     private void makeFuelGauge(int fuel) {
-        fuelGauge = new GameText("F:" + fuel, Game.HELICOPTER_COLOR,
+        fuelGauge = new GameText("F:" + fuel, Game.FUEL_GAUGE_COLOR,
                 FontWeight.BOLD);
         fuelGauge.setTranslateY(- Game.HELIBODY_SIZE / 2);
         fuelGauge.setTranslateX(-25);
