@@ -11,7 +11,9 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.paint.Paint;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.shape.Shape;
 import javafx.scene.text.Font;
@@ -56,6 +58,7 @@ public class GameApp extends Application {
                 case I -> game.handleIKeyPressed();
                 case R -> game.handleRKeyPressed();
                 case B -> game.handleBKeyPressed();
+                case D -> game.handleDKeyPressed();
             }
         });
     }
@@ -85,6 +88,11 @@ class Game extends Pane {
     public static final int MAX_CLOUD_RADIUS = 70;
     public static final double RAIN_FREQUENCY = 0.6;
 
+    public static final double WIND_SPEED = 1;
+    public static final double WIND_DIRECTION = 45;
+    public static final double DISTANCE_LINE_WIDTH = 1;
+    public static final Paint DISTANCE_LINE_COLOR = Color.WHITE;
+
     public static final Point2D HELIPAD_DIMENSIONS = new Point2D(100, 100);
     public static final Point2D HELIPAD_POSITION =
             new Point2D((GAME_WIDTH / 2),
@@ -107,11 +115,13 @@ class Game extends Pane {
 
     public static final double NANOS_PER_SEC = 1e9;
 
+
     private Ponds ponds;
     private Clouds clouds;
     private Helipad helipad;
     private Helicopter helicopter;
     private BoundsPane bounds;
+    private DistanceLines distanceLines;
 
     private boolean isHelicopterTryingToSeed;
     private AnimationTimer loop;
@@ -145,10 +155,21 @@ class Game extends Pane {
         this.helipad = makeHelipad();
         this.helicopter = makeHelicopter();
         initBounds();
-        this.getChildren().addAll(ponds, clouds, helipad, helicopter, bounds);
+        initDistanceLines();
+        this.getChildren().addAll(ponds, clouds, helipad, helicopter, bounds,
+                distanceLines);
 
         makeGameLoop();
         loop.start();
+    }
+
+    private void initDistanceLines() {
+        distanceLines = new DistanceLines();
+        for (Pond p : ponds) {
+            for (Cloud c : clouds) {
+                distanceLines.add(new DistanceLine(p, c));
+            }
+        }
     }
 
     private void initBounds() {
@@ -374,6 +395,68 @@ class Game extends Pane {
     public void handleBKeyPressed() {
         bounds.toggleVisibility();
     }
+
+    public void handleDKeyPressed() {
+        distanceLines.toggleVisibility();
+    }
+}
+
+class DistanceLines extends Pane implements Updatable {
+    private List<DistanceLine> distanceLines;
+
+    public DistanceLines() {
+        distanceLines = new LinkedList<>();
+        this.setVisible(false);
+    }
+
+    public void add(DistanceLine dLine) {
+        distanceLines.add(dLine);
+        this.getChildren().add(dLine);
+    }
+
+    @Override
+    public void update() {
+        for (DistanceLine d : distanceLines)
+            d.update();
+    }
+
+    public void toggleVisibility() {
+        this.setVisible(!this.isVisible());
+    }
+}
+
+/**
+ * Is a GameObject like Bound is. Postion defined as one end of the
+ * DistanceLine, preferably stationary (i.e. Pond)
+ */
+class DistanceLine extends GameObject implements Updatable {
+    private Cloud cloud;
+    private Pond pond;
+    private Line line;
+
+    public DistanceLine(Pond pond, Cloud cloud) {
+        super(pond.getPosition());
+        this.cloud = cloud;
+        this.pond = pond;
+
+        setupLineShape(pond, cloud);
+    }
+
+    private void setupLineShape(Pond pond, Cloud cloud) {
+        line = new Line(pond.getPosition().getX(), pond.getPosition().getY(),
+                cloud.getPosition().getX(), cloud.getPosition().getY());
+        line.setStrokeWidth(Game.DISTANCE_LINE_WIDTH);
+        line.setStroke(Game.DISTANCE_LINE_COLOR);
+        this.getChildren().add(line);
+    }
+
+    @Override
+    public void update() {
+        if (cloud == null)
+            return;
+        line.setEndX(cloud.getPosition().getX());
+        line.setEndY(cloud.getPosition().getY());
+    }
 }
 
 class BoundsPane extends Pane implements Updatable {
@@ -542,7 +625,7 @@ abstract class GameObject extends Group {
     }
 }
 
-class Ponds extends Pane implements Updatable {
+class Ponds extends Pane implements Updatable, Iterable<Pond> {
     private List<Pond> ponds;
 
     public Ponds() {
@@ -571,6 +654,11 @@ class Ponds extends Pane implements Updatable {
     public void fill() {
         for (Pond p : ponds)
             p.fill();
+    }
+
+    @Override
+    public Iterator<Pond> iterator() {
+        return ponds.iterator();
     }
 }
 
