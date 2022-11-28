@@ -78,7 +78,7 @@ class Game extends Pane {
     public static final int MAX_POND_RADIUS = 50;
     public static final int MAX_STARTING_POND_RADIUS =
             (int) (MAX_POND_RADIUS * 0.30);
-    public static final int TOTAL_POND_CAPACITY_TO_WIN = 80;
+    public static final double TOTAL_POND_CAPACITY_TO_WIN = 0.8;
 
     public static final int MIN_CLOUDS = 3;
     public static final int MAX_CLOUDS = 5;
@@ -165,11 +165,9 @@ class Game extends Pane {
 
     private void initDistanceLines() {
         distanceLines = new DistanceLines();
-        for (Pond p : ponds) {
-            for (Cloud c : clouds) {
+        for (Pond p : ponds)
+            for (Cloud c : clouds)
                 distanceLines.add(new DistanceLine(p, c));
-            }
-        }
     }
 
     private void initBounds() {
@@ -212,7 +210,7 @@ class Game extends Pane {
                 randomPositionInBound(new Point2D(0, (GAME_HEIGHT * (0.33))),
                         new Point2D(GAME_WIDTH, GAME_HEIGHT));
         Cloud cloud = new Cloud(position, randomInRange(MIN_CLOUD_RADIUS,
-                MAX_CLOUD_RADIUS), CLOUD_COLOR, CLOUD_TEXT_COLOR);
+                MAX_CLOUD_RADIUS));
         cloud.setTranslateX(position.getX());
         cloud.setTranslateY(position.getY());
         return cloud;
@@ -240,17 +238,20 @@ class Game extends Pane {
                 double delta = calculateDelta(now);
                 timer += delta;
 
-                helicopter.update();
-                clouds.update();
-                ponds.update();
-
-                bounds.update();
-
+                updateGameObjects();
                 seedIfNearCloud();
                 fillPondsWithRain();
 
                 showLoseDialogIfConditionsMet();
                 showWinDialogIfConditionsMet();
+            }
+
+            private void updateGameObjects() {
+                helicopter.update();
+                clouds.update();
+                ponds.update();
+                bounds.update();
+                distanceLines.update();
             }
 
             private void showWinDialogIfConditionsMet() {
@@ -286,9 +287,11 @@ class Game extends Pane {
             private Alert makeWinDialog() {
                 DecimalFormat decimalFormat =
                         new DecimalFormat("###,###");
+                double score = helicopter.getRemainingFuel()
+                        * ponds.getTotalCapacity();
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
                     "You won with a score of " +
-                            decimalFormat.format(helicopter.getRemainingFuel())
+                            decimalFormat.format(score)
                             + " points! Play again?");
                 alert.setTitle("Confirmation");
                 alert.setHeaderText("Confirmation");
@@ -321,16 +324,26 @@ class Game extends Pane {
                 return alert;
             }
 
-            // TODO fill pond only if cloud(s) within range
             private void fillPondsWithRain() {
                 if (timer >= RAIN_FREQUENCY) {
-                    for (Cloud c : clouds) {
-                        boolean hasRained = c.rain();
-                        if (hasRained) {
-                            ponds.fill();
-                        }
+                    for (DistanceLine distanceLine : distanceLines) {
+                        Pond p = distanceLine.getPond();
+                        Cloud c = distanceLine.getCloud();
+                        fillPondInProportionToCloudDistance(p, c, distanceLine);
                     }
                     timer = 0;
+                }
+            }
+
+            private void fillPondInProportionToCloudDistance(Pond p, Cloud c,
+                                                 DistanceLine distanceLine) {
+                double pondDiameter = 2 * p.getMaxRadius();
+                double pondCloudDistance = distanceLine.getDistance();
+                if (pondCloudDistance <= (4 * pondDiameter)) {
+                    boolean hasRained = c.rain();
+                    if (hasRained)
+                        p.fillByIncrement(1 -
+                                (pondCloudDistance / (4 * pondDiameter)));
                 }
             }
 
@@ -401,7 +414,7 @@ class Game extends Pane {
     }
 }
 
-class DistanceLines extends Pane implements Updatable {
+class DistanceLines extends Pane implements Updatable, Iterable<DistanceLine> {
     private List<DistanceLine> distanceLines;
 
     public DistanceLines() {
@@ -422,6 +435,11 @@ class DistanceLines extends Pane implements Updatable {
 
     public void toggleVisibility() {
         this.setVisible(!this.isVisible());
+    }
+
+    @Override
+    public Iterator<DistanceLine> iterator() {
+        return distanceLines.iterator();
     }
 }
 
@@ -456,6 +474,20 @@ class DistanceLine extends GameObject implements Updatable {
             return;
         line.setEndX(cloud.getPosition().getX());
         line.setEndY(cloud.getPosition().getY());
+    }
+
+    public double getDistance() {
+        double squaredSumOfX = Math.pow(line.getEndX() - line.getStartX(), 2);
+        double squaredSumOfY = Math.pow(line.getEndY() - line.getStartY(), 2);
+        return Math.sqrt(squaredSumOfX + squaredSumOfY);
+    }
+
+    public Pond getPond() {
+        return pond;
+    }
+
+    public Cloud getCloud() {
+        return cloud;
     }
 }
 
@@ -643,17 +675,12 @@ class Ponds extends Pane implements Updatable, Iterable<Pond> {
             p.update();
     }
 
-    public int getTotalCapacity() {
+    public double getTotalCapacity() {
         int totalCapacity = 0;
         for (Pond p : ponds)
             totalCapacity += p.getPercentFull();
-        return totalCapacity;
-    }
-
-    // TODO only those ponds within range should be filled
-    public void fill() {
-        for (Pond p : ponds)
-            p.fill();
+        System.out.println(((double) totalCapacity) / 100);
+        return ((double) totalCapacity) / 100;
     }
 
     @Override
@@ -665,24 +692,26 @@ class Ponds extends Pane implements Updatable, Iterable<Pond> {
 class Pond extends GameObject implements Updatable {
     private Circle pondCircle;
     private double maxRadius, currentRadius;
+    private double maxArea, currentArea;
     private GameText percentFullText;
     private int percentFull;
 
-    public Pond(Point2D startPosition, double maxRadius, double currentRadius,
+    public Pond(Point2D position, double maxRadius, double currentRadius,
                 final Color fill, final Color textFill) {
-        super(startPosition);
+        super(position);
         this.maxRadius = maxRadius;
+        maxArea = Math.PI * Math.pow(maxRadius, 2);
         this.currentRadius = currentRadius;
+        currentArea = Math.PI * Math.pow(currentRadius, 2);
         pondCircle = new Circle(currentRadius, fill);
 
-        makePercentFullText(maxRadius, currentRadius, textFill);
+        makePercentFullText(textFill);
 
         this.getChildren().addAll(pondCircle, percentFullText);
     }
 
-    private void makePercentFullText(double maxRadius, double currentRadius,
-                                     Color textFill) {
-        percentFull = (int) ((currentRadius / maxRadius) * 100);
+    private void makePercentFullText(Color textFill) {
+        percentFull = (int) ((currentArea / maxArea) * 100);
         percentFullText = new GameText(percentFull + "%", textFill);
 
         Bounds fpBounds = percentFullText.getBoundsInParent();
@@ -700,14 +729,24 @@ class Pond extends GameObject implements Updatable {
         }
     }
 
+    // Old growth algorithm
     public void fill() {
         if (percentFull < 100) {
             currentRadius = calcNextRadiusForPercent(++percentFull);
         }
     }
 
-    private double calcNextRadiusForPercent(int percent) {
-        return (maxRadius * ((double) percent / 100));
+    public void fillByIncrement(double multiplier) {
+        currentArea += (maxArea * 0.01) * multiplier;
+        if (currentArea > maxArea)
+            currentArea = maxArea;
+
+        currentRadius = Math.sqrt((currentArea / Math.PI));
+        percentFull = (int) (currentArea / maxArea * 100);
+    }
+
+    private double calcNextRadiusForPercent(double percent) {
+        return (maxRadius * ( percent / 100));
     }
 
     public boolean isFull() {
@@ -716,6 +755,10 @@ class Pond extends GameObject implements Updatable {
 
     public int getPercentFull() {
         return percentFull;
+    }
+
+    public double getMaxRadius() {
+        return maxRadius;
     }
 }
 
@@ -748,15 +791,15 @@ class Cloud extends GameObject implements Updatable {
     private Color fill;
     private GameText percentSaturatedText;
     private int seedPercentage;
+    private double speed;
 
-    public Cloud(Point2D initialPosition, double radius, Color fill,
-                 Color textFill) {
+    public Cloud(Point2D initialPosition, double radius) {
         super(initialPosition);
-        this.fill = fill;
+        this.fill = Game.CLOUD_COLOR;
         cloudCircle = new Circle(radius, fill);
 
         seedPercentage = 0;
-        makePercentSaturatedText(textFill);
+        makePercentSaturatedText(Game.CLOUD_TEXT_COLOR);
 
         this.getChildren().addAll(cloudCircle, percentSaturatedText);
     }
