@@ -24,10 +24,7 @@ import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
 
 import java.text.DecimalFormat;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 /**
  * Sets up key event handlers that invoke Game class methods.
@@ -88,7 +85,8 @@ class Game extends Pane {
     public static final int MAX_CLOUD_RADIUS = 70;
     public static final double RAIN_FREQUENCY = 0.6;
 
-    public static final double WIND_SPEED = 1;
+    public static final double WIND_SPEED = 0.25;
+    public static final double MAX_WIND_VARIATION = 0.7;
     public static final double WIND_DIRECTION = 45;
     public static final double DISTANCE_LINE_WIDTH = 1;
     public static final Paint DISTANCE_LINE_COLOR = Color.WHITE;
@@ -206,14 +204,30 @@ class Game extends Pane {
     }
 
     private static Cloud makeCloud() {
-        Point2D position =
-                randomPositionInBound(new Point2D(0, (GAME_HEIGHT * (0.33))),
-                        new Point2D(GAME_WIDTH, GAME_HEIGHT));
-        Cloud cloud = new Cloud(position, randomInRange(MIN_CLOUD_RADIUS,
-                MAX_CLOUD_RADIUS));
+        Point2D position = randomPositionInBound(
+                    new Point2D(0, (GAME_HEIGHT * (0.33))),
+                    new Point2D(GAME_WIDTH, GAME_HEIGHT));
+        Cloud cloud = new Cloud(position,
+                randomInRange(MIN_CLOUD_RADIUS, MAX_CLOUD_RADIUS),
+                WIND_SPEED + randomInRange(0, MAX_WIND_VARIATION));
         cloud.setTranslateX(position.getX());
         cloud.setTranslateY(position.getY());
         return cloud;
+    }
+
+    private void respawnCloud() {
+        Point2D position = randomPositionInBound(
+                new Point2D(-MAX_CLOUD_RADIUS, (GAME_HEIGHT * (0.33))),
+                new Point2D(-MAX_CLOUD_RADIUS, GAME_HEIGHT));
+        Cloud cloud = new Cloud(position, randomInRange(MIN_CLOUD_RADIUS,
+                MAX_CLOUD_RADIUS), WIND_SPEED + randomInRange(0, 0.25));
+        cloud.setTranslateX(position.getX());
+        cloud.setTranslateY(position.getY());
+        clouds.add(cloud);
+        bounds.add(new CircleBound(cloud,
+                new Circle(cloud.getBoundsInParent().getWidth() / 2)));
+        for (Pond p : ponds)
+            distanceLines.add(new DistanceLine(p, cloud));
     }
 
     private static Pond makePond() {
@@ -241,9 +255,21 @@ class Game extends Pane {
                 updateGameObjects();
                 seedIfNearCloud();
                 fillPondsWithRain();
+                tryRespawningClouds();
 
                 showLoseDialogIfConditionsMet();
                 showWinDialogIfConditionsMet();
+            }
+
+            private void tryRespawningClouds() {
+                if (clouds.getNumberOf() < 3)
+                    respawnCloud();
+                else if (clouds.getNumberOf() < 5) {
+                    int randomNumIn100 = (int) (Math.random() * 100);
+                    if (randomNumIn100 % 2 == 0) {
+                        respawnCloud();
+                    }
+                }
             }
 
             private void updateGameObjects() {
@@ -429,8 +455,16 @@ class DistanceLines extends Pane implements Updatable, Iterable<DistanceLine> {
 
     @Override
     public void update() {
-        for (DistanceLine d : distanceLines)
-            d.update();
+        Iterator<DistanceLine> iterator = distanceLines.iterator();
+        for (int i = 0; i < distanceLines.size(); i++) {
+            DistanceLine d = iterator.next();
+            if (d.getCloud().isOutOfPlay()) {
+                this.getChildren().remove(d);
+                iterator.remove();
+            }
+            else
+                d.update();
+        }
     }
 
     public void toggleVisibility() {
@@ -447,6 +481,7 @@ class DistanceLines extends Pane implements Updatable, Iterable<DistanceLine> {
  * Is a GameObject like Bound is. Postion defined as one end of the
  * DistanceLine, preferably stationary (i.e. Pond)
  */
+// TODO add distance text
 class DistanceLine extends GameObject implements Updatable {
     private Cloud cloud;
     private Pond pond;
@@ -515,13 +550,6 @@ class BoundsPane extends Pane implements Updatable {
                 return b;
         }
         return null;
-    }
-
-    public void remove(Bound bound) {
-        for (Bound b : bounds) {
-            if (bound == b)
-                bounds.remove(b);
-        }
     }
 
     @Override
@@ -679,7 +707,6 @@ class Ponds extends Pane implements Updatable, Iterable<Pond> {
         int totalCapacity = 0;
         for (Pond p : ponds)
             totalCapacity += p.getPercentFull();
-        System.out.println(((double) totalCapacity) / 100);
         return ((double) totalCapacity) / 100;
     }
 
@@ -729,13 +756,6 @@ class Pond extends GameObject implements Updatable {
         }
     }
 
-    // Old growth algorithm
-    public void fill() {
-        if (percentFull < 100) {
-            currentRadius = calcNextRadiusForPercent(++percentFull);
-        }
-    }
-
     public void fillByIncrement(double multiplier) {
         currentArea += (maxArea * 0.01) * multiplier;
         if (currentArea > maxArea)
@@ -743,14 +763,6 @@ class Pond extends GameObject implements Updatable {
 
         currentRadius = Math.sqrt((currentArea / Math.PI));
         percentFull = (int) (currentArea / maxArea * 100);
-    }
-
-    private double calcNextRadiusForPercent(double percent) {
-        return (maxRadius * ( percent / 100));
-    }
-
-    public boolean isFull() {
-        return percentFull >= 100;
     }
 
     public int getPercentFull() {
@@ -776,13 +788,25 @@ class Clouds extends Pane implements Updatable, Iterable<Cloud> {
 
     @Override
     public void update() {
-        for (Cloud c : clouds)
-            c.update();
+        Iterator<Cloud> iterator = clouds.iterator();
+        for (int i = 0; i < clouds.size(); i++) {
+            Cloud c = iterator.next();
+            if (c.isOutOfPlay()) {
+                this.getChildren().remove(c);
+                iterator.remove();
+            }
+            else
+                c.update();
+        }
     }
 
     @Override
     public Iterator<Cloud> iterator() {
         return clouds.iterator();
+    }
+
+    public int getNumberOf() {
+        return clouds.size();
     }
 }
 
@@ -792,8 +816,9 @@ class Cloud extends GameObject implements Updatable {
     private GameText percentSaturatedText;
     private int seedPercentage;
     private double speed;
+    private CloudState state;
 
-    public Cloud(Point2D initialPosition, double radius) {
+    public Cloud(Point2D initialPosition, double radius, double speed) {
         super(initialPosition);
         this.fill = Game.CLOUD_COLOR;
         cloudCircle = new Circle(radius, fill);
@@ -802,6 +827,8 @@ class Cloud extends GameObject implements Updatable {
         makePercentSaturatedText(Game.CLOUD_TEXT_COLOR);
 
         this.getChildren().addAll(cloudCircle, percentSaturatedText);
+        this.speed = speed;
+        state = new AliveCloud();
     }
 
     private void makePercentSaturatedText(Color textFill) {
@@ -818,33 +845,141 @@ class Cloud extends GameObject implements Updatable {
 
     @Override
     public void update() {
+        state.update(this, speed, cloudCircle, fill, percentSaturatedText,
+                seedPercentage);
+    }
+
+    public void seed() {
+        state.seed(this, cloudCircle);
+    }
+
+    public boolean rain() {
+        return state.rain(this, cloudCircle);
+    }
+
+    public int getSeedPercentage() {
+        return seedPercentage;
+    }
+
+    public void incrementSeedPercentage() {
+        seedPercentage++;
+        int red = (int) (255 * ((Color) cloudCircle.getFill()).getRed());
+        int green =
+                (int) (255 * ((Color) cloudCircle.getFill()).getGreen());
+        int blue = (int) (255 * ((Color) cloudCircle.getFill()).getBlue());
+        fill = Color.rgb(--red, --green, --blue);
+    }
+
+    public void decrementSeedPercentage() {
+        seedPercentage--;
+        int red = (int) (255 * ((Color) cloudCircle.getFill()).getRed());
+        int green =
+                (int) (255 * ((Color) cloudCircle.getFill()).getGreen());
+        int blue = (int) (255 * ((Color) cloudCircle.getFill()).getBlue());
+        fill = Color.rgb(++red, ++green, ++blue);
+    }
+
+    public void changeState(CloudState cloudState) {
+        this.state = cloudState;
+    }
+
+    public double getRadius() {
+        return cloudCircle.getRadius();
+    }
+
+    public boolean isOutOfPlay() {
+        return state instanceof DeadCloud;
+    }
+
+}
+
+interface CloudState {
+
+    void update(Cloud cloud, double speed, Circle cloudCircle, Color fill,
+                GameText percentSaturatedText, int seedPercentage);
+
+    void seed(Cloud cloud, Circle cloudCircle);
+
+    boolean rain(Cloud cloud, Circle cloudCircle);
+
+}
+
+class AliveCloud implements CloudState {
+
+    @Override
+    public void update(Cloud cloud, double speed, Circle cloudCircle,
+               Color fill, GameText percentSaturatedText, int seedPercentage) {
+        Point2D currentPosition = cloud.getPosition();
+        Point2D newPosition = new Point2D(currentPosition.getX() + speed,
+                currentPosition.getY());
+        cloud.setPosition(newPosition);
+        cloud.setTranslateX(cloud.getTranslateX() + speed);
+
+        if (cloud.getPosition().getX() + cloud.getRadius() >= 0)
+            cloud.changeState(new InPlayCloud());
+    }
+
+    @Override
+    public void seed(Cloud cloud, Circle cloudCircle) {
+
+    }
+
+    @Override
+    public boolean rain(Cloud cloud, Circle cloudCircle) {
+        return false;
+    }
+}
+
+class InPlayCloud implements CloudState {
+
+    @Override
+    public void update(Cloud cloud, double speed, Circle cloudCircle,
+               Color fill, GameText percentSaturatedText, int seedPercentage) {
         if (cloudCircle.getFill() != fill) {
             cloudCircle.setFill(fill);
             percentSaturatedText.setText(seedPercentage + "%");
         }
+        Point2D currentPosition = cloud.getPosition();
+        Point2D newPosition = new Point2D(currentPosition.getX() + speed,
+                currentPosition.getY());
+        cloud.setPosition(newPosition);
+        cloud.setTranslateX(cloud.getTranslateX() + speed);
+
+        if (cloud.getPosition().getX() - cloud.getRadius() > 800)
+            cloud.changeState(new DeadCloud());
     }
 
-    public void seed() {
-        if (seedPercentage < 100) {
-            seedPercentage++;
-            int red = (int) (255 * ((Color) cloudCircle.getFill()).getRed());
-            int green =
-                (int) (255 * ((Color) cloudCircle.getFill()).getGreen());
-            int blue = (int) (255 * ((Color) cloudCircle.getFill()).getBlue());
-            fill = Color.rgb(--red, --green, --blue);
-        }
+    @Override
+    public void seed(Cloud cloud, Circle cloudCircle) {
+        if (cloud.getSeedPercentage() < 100)
+            cloud.incrementSeedPercentage();
     }
 
-    public boolean rain() {
-        if (seedPercentage >= 30) {
-            seedPercentage--;
-            int red = (int) (255 * ((Color) cloudCircle.getFill()).getRed());
-            int green =
-                (int) (255 * ((Color) cloudCircle.getFill()).getGreen());
-            int blue = (int) (255 * ((Color) cloudCircle.getFill()).getBlue());
-            fill = Color.rgb(++red, ++green, ++blue);
+    @Override
+    public boolean rain(Cloud cloud, Circle cloudCircle) {
+        if (cloud.getSeedPercentage() >= 30) {
+            cloud.decrementSeedPercentage();
             return true;
         }
+        return false;
+    }
+}
+
+class DeadCloud implements CloudState {
+
+    @Override
+    public void update(Cloud cloud, double speed, Circle cloudCircle,
+               Color fill, GameText percentSaturatedText, int seedPercentage) {
+        /* should be deleted by now */
+    }
+
+    @Override
+    public void seed(Cloud cloud, Circle cloudCircle) {
+
+    }
+
+    @Override
+    public boolean rain(Cloud cloud, Circle cloudCircle) {
         return false;
     }
 }
