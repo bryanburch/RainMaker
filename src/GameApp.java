@@ -87,7 +87,6 @@ class Game extends Pane {
 
     public static final double WIND_SPEED = 0.25;
     public static final double MAX_WIND_VARIATION = 0.7;
-    public static final double WIND_DIRECTION = 45;
     public static final double DISTANCE_LINE_WIDTH = 1;
     public static final Paint DISTANCE_LINE_COLOR = Color.WHITE;
 
@@ -481,11 +480,11 @@ class DistanceLines extends Pane implements Updatable, Iterable<DistanceLine> {
  * Is a GameObject like Bound is. Postion defined as one end of the
  * DistanceLine, preferably stationary (i.e. Pond)
  */
-// TODO add distance text
 class DistanceLine extends GameObject implements Updatable {
     private Cloud cloud;
     private Pond pond;
     private Line line;
+    private GameText distance;
 
     public DistanceLine(Pond pond, Cloud cloud) {
         super(pond.getPosition());
@@ -493,6 +492,20 @@ class DistanceLine extends GameObject implements Updatable {
         this.pond = pond;
 
         setupLineShape(pond, cloud);
+        setupDistanceText();
+    }
+
+    private void setupDistanceText() {
+        distance = new GameText(String.valueOf((int) getDistance()),
+                Game.DISTANCE_LINE_COLOR);
+        setDistanceTextToMidpoint();
+        this.getChildren().add(distance);
+    }
+
+    private void setDistanceTextToMidpoint() {
+        Point2D midpoint = getMidpoint();
+        distance.setTranslateX(midpoint.getX());
+        distance.setTranslateY(midpoint.getY());
     }
 
     private void setupLineShape(Pond pond, Cloud cloud) {
@@ -509,6 +522,17 @@ class DistanceLine extends GameObject implements Updatable {
             return;
         line.setEndX(cloud.getPosition().getX());
         line.setEndY(cloud.getPosition().getY());
+        updateDistanceText();
+    }
+
+    private void updateDistanceText() {
+        distance.setText(String.valueOf((int) getDistance()));
+        setDistanceTextToMidpoint();
+    }
+
+    private Point2D getMidpoint() {
+        return new Point2D((line.getStartX() + line.getEndX()) / 2,
+                (line.getStartY() + line.getEndY()) / 2);
     }
 
     public double getDistance() {
@@ -1400,7 +1424,7 @@ interface Updatable {
 class GameText extends Group {
     private Text text;
 
-    public GameText(final String string, final Color fill,
+    public GameText(final String string, final Paint fill,
                     FontWeight fontWeight) {
         text = new Text(string);
         text.setFill(fill);
@@ -1410,7 +1434,7 @@ class GameText extends Group {
         this.getChildren().add(text);
     }
 
-    public GameText(final String string, final Color fill) {
+    public GameText(final String string, final Paint fill) {
         this(string, fill, FontWeight.NORMAL);
     }
 
