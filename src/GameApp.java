@@ -85,8 +85,9 @@ class Game extends Pane {
     public static final int MAX_CLOUD_RADIUS = 70;
     public static final double RAIN_FREQUENCY = 0.6;
 
-    public static final double WIND_SPEED = 0.25;
-    public static final double MAX_WIND_VARIATION = 0.7;
+    public static final double MEAN_WIND_SPEED = 0.4;
+    public static final double STD_DEV_WIND_SPEED = 0.2;
+    public static final int WIND_UPDATE_FREQ_SEC = 5;
     public static final double DISTANCE_LINE_WIDTH = 1;
     public static final Paint DISTANCE_LINE_COLOR = Color.WHITE;
 
@@ -119,6 +120,7 @@ class Game extends Pane {
     private Helicopter helicopter;
     private BoundsPane bounds;
     private DistanceLines distanceLines;
+    private Wind wind;
 
     private boolean isHelicopterTryingToSeed;
     private AnimationTimer loop;
@@ -146,6 +148,8 @@ class Game extends Pane {
     }
 
     private void init() {
+        wind = new Wind();
+
         this.getChildren().clear();
         initPonds();
         initClouds();
@@ -156,8 +160,15 @@ class Game extends Pane {
         this.getChildren().addAll(ponds, clouds, helipad, helicopter, bounds,
                 distanceLines);
 
+        initWind();
         makeGameLoop();
         loop.start();
+    }
+
+    private void initWind() {
+        for (Cloud c : clouds) {
+            wind.addObserver(c);
+        }
     }
 
     private void initDistanceLines() {
@@ -180,7 +191,7 @@ class Game extends Pane {
     }
 
     private void initClouds() {
-        clouds = new Clouds();
+        clouds = new Clouds(wind);
         for (int i = 0; i < randomInRange(MIN_CLOUDS - 1, MAX_CLOUDS); i++)
             clouds.add(makeCloud());
     }
@@ -208,7 +219,7 @@ class Game extends Pane {
                     new Point2D(GAME_WIDTH, GAME_HEIGHT));
         Cloud cloud = new Cloud(position,
                 randomInRange(MIN_CLOUD_RADIUS, MAX_CLOUD_RADIUS),
-                WIND_SPEED + randomInRange(0, MAX_WIND_VARIATION));
+                MEAN_WIND_SPEED, randomInRange(0, STD_DEV_WIND_SPEED));
         cloud.setTranslateX(position.getX());
         cloud.setTranslateY(position.getY());
         return cloud;
@@ -219,7 +230,7 @@ class Game extends Pane {
                 new Point2D(-MAX_CLOUD_RADIUS, (GAME_HEIGHT * (0.33))),
                 new Point2D(-MAX_CLOUD_RADIUS, GAME_HEIGHT));
         Cloud cloud = new Cloud(position, randomInRange(MIN_CLOUD_RADIUS,
-                MAX_CLOUD_RADIUS), WIND_SPEED + randomInRange(0, 0.25));
+            MAX_CLOUD_RADIUS), MEAN_WIND_SPEED, randomInRange(0, 0.25));
         cloud.setTranslateX(position.getX());
         cloud.setTranslateY(position.getY());
         clouds.add(cloud);
@@ -227,6 +238,7 @@ class Game extends Pane {
                 new Circle(cloud.getBoundsInParent().getWidth() / 2)));
         for (Pond p : ponds)
             distanceLines.add(new DistanceLine(p, cloud));
+        wind.addObserver(cloud);
     }
 
     private static Pond makePond() {
@@ -245,19 +257,29 @@ class Game extends Pane {
         AnimationTimer loop = new AnimationTimer() {
             private double old = -1;
             private double timer = 0;
+            private double windTimer = 0;
 
             @Override
             public void handle(long now) {
                 double delta = calculateDelta(now);
                 timer += delta;
+                windTimer += delta;
 
                 updateGameObjects();
+                updateWind();
                 seedIfNearCloud();
                 fillPondsWithRain();
                 tryRespawningClouds();
 
                 showLoseDialogIfConditionsMet();
                 showWinDialogIfConditionsMet();
+            }
+
+            private void updateWind() {
+                if (windTimer >= WIND_UPDATE_FREQ_SEC) {
+                    wind.update();
+                    windTimer = 0;
+                }
             }
 
             private void tryRespawningClouds() {
@@ -740,6 +762,26 @@ class Ponds extends Pane implements Updatable, Iterable<Pond> {
     }
 }
 
+class TransientGameObject extends GameObject {
+    private double speed;
+    private double speedOffset;
+
+    public TransientGameObject(Point2D startPosition, double speed,
+                               double speedOffset) {
+        super(startPosition);
+        this.speed = speed;
+        this.speedOffset = speedOffset;
+    }
+
+    public void impartSpeed(double speed) {
+        this.speed = speed + speedOffset;
+    }
+
+    public double getSpeed() {
+        return speed;
+    }
+}
+
 class Pond extends GameObject implements Updatable {
     private Circle pondCircle;
     private double maxRadius, currentRadius;
@@ -798,11 +840,47 @@ class Pond extends GameObject implements Updatable {
     }
 }
 
+class Wind implements Updatable {
+    private double speed;
+    private Random random;
+    private List<TransientGameObject> observers;
+
+    public Wind() {
+        this.speed = Game.MEAN_WIND_SPEED;
+        random = new Random();
+        observers = new LinkedList<>();
+    }
+
+    @Override
+    public void update() {
+        /* nextGaussian use: https://stackoverflow.com/a/6012014 */
+        speed = random.nextGaussian()
+                * Game.STD_DEV_WIND_SPEED + Game.MEAN_WIND_SPEED;
+        notifyObservers();
+    }
+
+    public void addObserver(TransientGameObject t) {
+        observers.add(t);
+    }
+
+    public void removeObserver(TransientGameObject t) {
+        observers.remove(t);
+    }
+
+    private void notifyObservers() {
+        for (TransientGameObject t : observers) {
+            t.impartSpeed(speed);
+        }
+    }
+}
+
 class Clouds extends Pane implements Updatable, Iterable<Cloud> {
     private List<Cloud> clouds;
+    private Wind wind;
 
-    public Clouds() {
+    public Clouds(Wind wind) {
         clouds = new LinkedList<>();
+        this.wind = wind;
     }
 
     public void add(Cloud cloud) {
@@ -817,6 +895,7 @@ class Clouds extends Pane implements Updatable, Iterable<Cloud> {
             Cloud c = iterator.next();
             if (c.isOutOfPlay()) {
                 this.getChildren().remove(c);
+                wind.removeObserver(c);
                 iterator.remove();
             }
             else
@@ -834,16 +913,16 @@ class Clouds extends Pane implements Updatable, Iterable<Cloud> {
     }
 }
 
-class Cloud extends GameObject implements Updatable {
+class Cloud extends TransientGameObject implements Updatable {
     private Circle cloudCircle;
     private Color fill;
     private GameText percentSaturatedText;
     private int seedPercentage;
-    private double speed;
     private CloudState state;
 
-    public Cloud(Point2D initialPosition, double radius, double speed) {
-        super(initialPosition);
+    public Cloud(Point2D initialPosition, double radius, double speed,
+                 double speedOffset) {
+        super(initialPosition, speed, speedOffset);
         this.fill = Game.CLOUD_COLOR;
         cloudCircle = new Circle(radius, fill);
 
@@ -851,7 +930,6 @@ class Cloud extends GameObject implements Updatable {
         makePercentSaturatedText(Game.CLOUD_TEXT_COLOR);
 
         this.getChildren().addAll(cloudCircle, percentSaturatedText);
-        this.speed = speed;
         state = new AliveCloud();
     }
 
@@ -869,7 +947,7 @@ class Cloud extends GameObject implements Updatable {
 
     @Override
     public void update() {
-        state.update(this, speed, cloudCircle, fill, percentSaturatedText,
+        state.update(this, cloudCircle, fill, percentSaturatedText,
                 seedPercentage);
     }
 
@@ -919,7 +997,7 @@ class Cloud extends GameObject implements Updatable {
 
 interface CloudState {
 
-    void update(Cloud cloud, double speed, Circle cloudCircle, Color fill,
+    void update(Cloud cloud, Circle cloudCircle, Color fill,
                 GameText percentSaturatedText, int seedPercentage);
 
     void seed(Cloud cloud, Circle cloudCircle);
@@ -931,13 +1009,13 @@ interface CloudState {
 class AliveCloud implements CloudState {
 
     @Override
-    public void update(Cloud cloud, double speed, Circle cloudCircle,
-               Color fill, GameText percentSaturatedText, int seedPercentage) {
+    public void update(Cloud cloud, Circle cloudCircle, Color fill,
+                       GameText percentSaturatedText, int seedPercentage) {
         Point2D currentPosition = cloud.getPosition();
-        Point2D newPosition = new Point2D(currentPosition.getX() + speed,
-                currentPosition.getY());
+        Point2D newPosition = new Point2D(currentPosition.getX()
+                + cloud.getSpeed(), currentPosition.getY());
         cloud.setPosition(newPosition);
-        cloud.setTranslateX(cloud.getTranslateX() + speed);
+        cloud.setTranslateX(cloud.getTranslateX() + cloud.getSpeed());
 
         if (cloud.getPosition().getX() + cloud.getRadius() >= 0)
             cloud.changeState(new InPlayCloud());
@@ -957,17 +1035,17 @@ class AliveCloud implements CloudState {
 class InPlayCloud implements CloudState {
 
     @Override
-    public void update(Cloud cloud, double speed, Circle cloudCircle,
-               Color fill, GameText percentSaturatedText, int seedPercentage) {
+    public void update(Cloud cloud, Circle cloudCircle, Color fill,
+                       GameText percentSaturatedText, int seedPercentage) {
         if (cloudCircle.getFill() != fill) {
             cloudCircle.setFill(fill);
             percentSaturatedText.setText(seedPercentage + "%");
         }
         Point2D currentPosition = cloud.getPosition();
-        Point2D newPosition = new Point2D(currentPosition.getX() + speed,
-                currentPosition.getY());
+        Point2D newPosition = new Point2D(currentPosition.getX()
+                + cloud.getSpeed(), currentPosition.getY());
         cloud.setPosition(newPosition);
-        cloud.setTranslateX(cloud.getTranslateX() + speed);
+        cloud.setTranslateX(cloud.getTranslateX() + cloud.getSpeed());
 
         if (cloud.getPosition().getX() - cloud.getRadius() > 800)
             cloud.changeState(new DeadCloud());
@@ -992,8 +1070,8 @@ class InPlayCloud implements CloudState {
 class DeadCloud implements CloudState {
 
     @Override
-    public void update(Cloud cloud, double speed, Circle cloudCircle,
-               Color fill, GameText percentSaturatedText, int seedPercentage) {
+    public void update(Cloud cloud, Circle cloudCircle, Color fill,
+                       GameText percentSaturatedText, int seedPercentage) {
         /* should be deleted by now */
     }
 
