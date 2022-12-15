@@ -3,6 +3,7 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
+import javafx.geometry.Pos;
 import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
@@ -20,6 +21,7 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.scene.transform.Rotate;
+import javafx.scene.transform.Scale;
 import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
 
@@ -96,6 +98,19 @@ class Game extends Pane {
             new Point2D((GAME_WIDTH / 2),
                     (GAME_HEIGHT / 25) + (HELIPAD_DIMENSIONS.getY() / 2));
 
+    public static final Point2D BLIMP_BODY_SIZE = new Point2D(200, 68);
+    public static final int BLIMP_ROTOR_SIZE = 70;
+    public static final int BLIMP_BLADE_XOFFSET = -90;
+    public static final double BLIMP_ROTOR_XSCALE_FACTOR = 0.25;
+    public static final double BLIMP_ROTOR_SPEED = 7.5;
+    public static final Color BLIMP_FUEL_TEXT_COLOR = Color.rgb(44, 235, 242);
+    public static final Point2D BLIMP_TEXT_PANE_SIZE =
+            new Point2D(BLIMP_BODY_SIZE.getX() / 2,
+                    BLIMP_BODY_SIZE.getY() / 2);
+    public static final int BLIMP_TEXT_FONT_SIZE = 16;
+    public static final int REFUEL_RATE = 30;
+    public static final double REFUELING_SPEED_DIFF_MARGIN = 0.1;
+
     public static final Color FUEL_GAUGE_COLOR = Color.MAROON;
     public static final int HELIBODY_SIZE = 75;
     public static final int ROTOR_LENGTH = 80;
@@ -113,14 +128,14 @@ class Game extends Pane {
 
     public static final double NANOS_PER_SEC = 1e9;
 
-
     private Ponds ponds;
     private Clouds clouds;
+    private Blimp blimp; // TODO: collection of blimps
+    private Wind wind;
     private Helipad helipad;
     private Helicopter helicopter;
     private BoundsPane bounds;
     private DistanceLines distanceLines;
-    private Wind wind;
 
     private boolean isHelicopterTryingToSeed;
     private AnimationTimer loop;
@@ -153,16 +168,25 @@ class Game extends Pane {
         this.getChildren().clear();
         initPonds();
         initClouds();
+        initBlimps();
         this.helipad = makeHelipad();
         this.helicopter = makeHelicopter();
         initBounds();
         initDistanceLines();
-        this.getChildren().addAll(ponds, clouds, helipad, helicopter, bounds,
+        // TODO: blimp -> blimps
+        this.getChildren().addAll(ponds, clouds, blimp, helipad, helicopter,
+                bounds,
                 distanceLines);
 
         initWind();
         makeGameLoop();
         loop.start();
+    }
+
+    // TODO: instantiate blimps
+    private void initBlimps() {
+        blimp = new Blimp(new Point2D(0, 400), 0.5, 0, 10000);
+
     }
 
     private void initWind() {
@@ -188,6 +212,10 @@ class Game extends Pane {
                 helipad.getBoundsInParent().getHeight())));
         bounds.add(new CircleBound(helicopter,
                 new Circle(ROTOR_LENGTH / 2)));
+        // TODO: blimp -> blimps
+        bounds.add(new RectangleBound(blimp, new Rectangle(
+                blimp.getBoundsInParent().getWidth(),
+                blimp.getBoundsInParent().getHeight())));
     }
 
     private void initClouds() {
@@ -267,12 +295,31 @@ class Game extends Pane {
 
                 updateGameObjects();
                 updateWind();
+                refuelIfNearBlimp();
                 seedIfNearCloud();
                 fillPondsWithRain();
                 tryRespawningClouds();
 
                 showLoseDialogIfConditionsMet();
                 showWinDialogIfConditionsMet();
+            }
+
+            private void refuelIfNearBlimp() {
+                if (isRefuelingPossible()) {
+                    double extractedFuel = blimp.extractFuel();
+                    helicopter.refuelBy(extractedFuel);
+                }
+            }
+
+            private boolean isRefuelingPossible() {
+                var helicopterBounds = bounds.getFor(helicopter);
+                var blimpBounds = bounds.getFor(blimp);
+                boolean isColliding =
+                        helicopterBounds.collidesWith(blimpBounds);
+                boolean isSpeedMatching = Math.abs(helicopter.getSpeed()
+                        - blimp.getSpeed()) < REFUELING_SPEED_DIFF_MARGIN;
+                return isColliding
+                        && isSpeedMatching;
             }
 
             private void updateWind() {
@@ -294,6 +341,7 @@ class Game extends Pane {
             }
 
             private void updateGameObjects() {
+                blimp.update(); // TODO: blimp -> blimps
                 helicopter.update();
                 clouds.update();
                 ponds.update();
@@ -337,11 +385,11 @@ class Game extends Pane {
                 double score = helicopter.getRemainingFuel()
                         * ponds.getTotalCapacity();
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                    "You won with a score of " +
-                            decimalFormat.format(score)
-                            + " points! Play again?");
-                alert.setTitle("Confirmation");
-                alert.setHeaderText("Confirmation");
+                "You scored " + decimalFormat.format(score)
+                            + " points. Give it another go, pilot?");
+                alert.setTitle("Mission Success");
+                alert.setHeaderText(
+                        "You managed to restore the Central Valley!");
 
                 ButtonType yesButton = new ButtonType("Yes");
                 ButtonType noButton = new ButtonType("No");
@@ -361,9 +409,11 @@ class Game extends Pane {
 
             private Alert makeLoseDialog() {
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                        "You lost! Play again?");
-                alert.setTitle("Confirmation");
-                alert.setHeaderText("Confirmation");
+                        "Try again?");
+                alert.setTitle("Mission Failure");
+                alert.setHeaderText(
+                        "Despite your best efforts the drought still has a " +
+                                "hold on the Central Valley.");
 
                 ButtonType yesButton = new ButtonType("Yes");
                 ButtonType noButton = new ButtonType("No");
@@ -781,6 +831,188 @@ class TransientGameObject extends GameObject {
         return speed;
     }
 }
+
+class BlimpBody extends Group {
+
+    public BlimpBody() {
+        configureAndAddImage();
+    }
+
+    private void configureAndAddImage() {
+        ImageView image = new ImageView(
+                new Image("blimp_transparent_trimmed.png"));
+        image.setFitHeight(Game.BLIMP_BODY_SIZE.getY());
+        image.setFitWidth(Game.BLIMP_BODY_SIZE.getX());
+        centerAboutOrigin(image);
+        this.getChildren().add(image);
+    }
+
+    private void centerAboutOrigin(ImageView image) {
+        image.getTransforms().add(
+                new Translate(- Game.BLIMP_BODY_SIZE.getX() / 2,
+                        - Game.BLIMP_BODY_SIZE.getY() / 2)
+        );
+    }
+}
+
+class BlimpBlade extends Group {
+    private double angle = 0;
+
+    public BlimpBlade() {
+        ImageView image = new ImageView(
+                new Image("blimp_rotor_transparent.png"));
+        image.setFitHeight(Game.BLIMP_ROTOR_SIZE);
+        image.setFitWidth(Game.BLIMP_ROTOR_SIZE);
+        centerAboutOrigin(image);
+        this.getChildren().add(image);
+        startAnimation();
+    }
+
+    private void centerAboutOrigin(ImageView image) {
+        image.getTransforms().add(
+                new Translate(- Game.BLIMP_ROTOR_SIZE / 2,
+                        - Game.BLIMP_ROTOR_SIZE / 2));
+    }
+
+    private void startAnimation() {
+        AnimationTimer loop = new AnimationTimer() {
+            @Override
+            public void handle(long now) {
+                angle += Game.BLIMP_ROTOR_SPEED;
+                getTransforms().clear();
+                getTransforms().addAll(
+                        new Translate(Game.BLIMP_BLADE_XOFFSET, 0),
+                        new Scale(Game.BLIMP_ROTOR_XSCALE_FACTOR, 1),
+                        new Rotate(angle)
+                );
+            }
+        };
+        loop.start();
+    }
+}
+
+class Blimp extends TransientGameObject implements Updatable {
+    private BlimpBody body;
+    private BlimpBlade blade;
+    private GameText fuelText;
+    private double fuel;
+
+    public Blimp(Point2D initialPosition, double speed, double speedOffset,
+                 double fuel) {
+        super(initialPosition, speed, speedOffset);
+        buildShape();
+        addFuelGauge(fuel);
+        this.getTransforms().add(new Translate(initialPosition.getX(),
+                initialPosition.getY()));
+    }
+
+    private void addFuelGauge(double fuel) {
+        this.fuel = fuel;
+        fuelText = new GameText(String.valueOf((int) fuel),
+                Game.BLIMP_FUEL_TEXT_COLOR);
+        fuelText.setSize(Game.BLIMP_TEXT_FONT_SIZE);
+        StackPane fuelPane = new StackPane(fuelText);
+        fuelPane.setAlignment(Pos.CENTER);
+        fuelPane.setPrefSize(Game.BLIMP_TEXT_PANE_SIZE.getX(),
+                Game.BLIMP_TEXT_PANE_SIZE.getY());
+        fuelPane.getTransforms().add(
+                new Translate(- Game.BLIMP_TEXT_PANE_SIZE.getX() / 2,
+                        - Game.BLIMP_TEXT_PANE_SIZE.getY() / 2));
+        this.getChildren().add(fuelPane);
+    }
+
+    private void buildShape() {
+        body = new BlimpBody();
+        blade = new BlimpBlade();
+        blade.getTransforms().add(new Translate(Game.BLIMP_BLADE_XOFFSET, 0));
+        this.getChildren().addAll(body, blade);
+    }
+
+    @Override
+    public void update() {
+        Point2D newPosition = new Point2D(
+                this.getPosition().getX() + this.getSpeed(),
+                this.getPosition().getY());
+        this.setPosition(newPosition);
+
+        this.getTransforms().clear();
+        this.getTransforms().add(
+                new Translate(newPosition.getX(), newPosition.getY()));
+
+        fuelText.setText(String.valueOf((int) fuel));
+    }
+
+    public double extractFuel() {
+        if (fuel >= Game.REFUEL_RATE) {
+            fuel -= Game.REFUEL_RATE;
+            return Game.REFUEL_RATE;
+        } else {
+            double remainder = fuel;
+            fuel = 0;
+            return remainder;
+        }
+    }
+}
+
+abstract class BlimpState implements Updatable {
+    double fuel;
+    /**
+     * State dependent behaviors for Blimp:
+     * 1. extractFuel() — only possible when InView
+     * 2.
+     */
+    abstract double extractFuel();
+
+}
+
+class CreatedBlimp extends BlimpState {
+
+    @Override
+    public double extractFuel() {
+        return 0;
+    }
+
+    @Override
+    public void update() {
+
+    }
+}
+
+class InViewBlimp extends BlimpState {
+    @Override
+    public double extractFuel() {
+        if (fuel >= Game.REFUEL_RATE) {
+            fuel -= Game.REFUEL_RATE;
+            return Game.REFUEL_RATE;
+        } else {
+            double remainder = fuel;
+            fuel = 0;
+            return remainder;
+        }
+
+    }
+
+    @Override
+    public void update() {
+
+    }
+}
+
+class DeadBlimp extends BlimpState {
+
+    @Override
+    double extractFuel() {
+        return 0;
+    }
+
+    @Override
+    public void update() {
+
+    }
+}
+
+
+
 
 class Pond extends GameObject implements Updatable {
     private Circle pondCircle;
@@ -1234,6 +1466,10 @@ class Helicopter extends GameObject implements Updatable {
         return Math.abs(speed) < 1e-3;
 //        return state instanceof OffHeliState;
     }
+
+    public void refuelBy(double fuel) {
+        this.fuel += fuel;
+    }
 }
 
 class HeliBody extends Group {
@@ -1251,8 +1487,8 @@ class HeliBody extends Group {
     }
 
     private void centerAboutOriginAndFlip() {
-        this.setTranslateX(-Game.HELIBODY_SIZE /2);
-        this.setTranslateY(-Game.HELIBODY_SIZE /2);
+        this.setTranslateX(- Game.HELIBODY_SIZE / 2);
+        this.setTranslateY(- Game.HELIBODY_SIZE / 2);
         this.setRotate(180);
     }
 }
@@ -1514,6 +1750,17 @@ class GameText extends Group {
 
     public GameText(final String string, final Paint fill) {
         this(string, fill, FontWeight.NORMAL);
+    }
+
+    public void setStroke(Color color, double width) {
+        text.setStroke(color);
+        text.setStrokeWidth(width);
+    }
+
+    public void setSize(double size) {
+        Font font = text.getFont();
+        text.setFont(Font.font(font.getFamily(),
+                FontWeight.NORMAL, size));
     }
 
     public void setText(String string) {
