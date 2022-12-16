@@ -289,16 +289,14 @@ class Game extends Pane {
     private void makeGameLoop() {
         AnimationTimer loop = new AnimationTimer() {
             private double old = -1;
-            private double timer = 0;
-            private double windChangeTimer = 0;
-            private double blimpRespawnTimer = 0;
+            private double timeSinceLastRain = 0;
+            private double timeSinceWindChange = 0;
+            private double timeSinceBlimpRespawnTry = 0;
 
             @Override
             public void handle(long now) {
                 double delta = calculateDelta(now);
-                timer += delta;
-                windChangeTimer += delta;
-                blimpRespawnTimer += delta;
+                incrementTimers(delta);
 
                 markForDeletionBoundsOfDeadObjects();
                 markForDeletionDistanceLinesOfDeadClouds();
@@ -314,6 +312,12 @@ class Game extends Pane {
                 showWinDialogIfConditionsMet();
             }
 
+            private void incrementTimers(double delta) {
+                timeSinceLastRain += delta;
+                timeSinceWindChange += delta;
+                timeSinceBlimpRespawnTry += delta;
+            }
+
             private void updateGameObjects() {
                 blimps.update();
                 helicopter.update();
@@ -324,11 +328,10 @@ class Game extends Pane {
             }
 
             private void markForDeletionDistanceLinesOfDeadClouds() {
-                // TODO: implement marking distance lines for deletion
-                for (DistanceLine d : distanceLines) {
-                    if (d.getCloud().getState() instanceof DeadCloud)
+                for (DistanceLine d : distanceLines)
+                    if (d.getDynamicEndpoint() instanceof Cloud cloud
+                            && cloud.getState() instanceof DeadCloud)
                         distanceLines.markForDeletion(d);
-                }
             }
 
             private void markForDeletionBoundsOfDeadObjects() {
@@ -344,11 +347,13 @@ class Game extends Pane {
             }
 
             private void trySpawningBlimp() {
-                if (blimpRespawnTimer >= BLIMP_RESPAWN_ATTEMPT_FREQ_SEC) {
+                boolean isTimeToTryBlimpSpawn =
+                    timeSinceBlimpRespawnTry >= BLIMP_RESPAWN_ATTEMPT_FREQ_SEC;
+                if (isTimeToTryBlimpSpawn) {
                     int random = (int) randomInRange(0, 100);
                     if (random <= BLIMP_RESPAWN_CHANCE_PERCENT)
                         spawnBlimp();
-                    blimpRespawnTimer = 0;
+                    timeSinceBlimpRespawnTry = 0;
                 }
             }
 
@@ -372,9 +377,9 @@ class Game extends Pane {
             }
 
             private void updateWind() {
-                if (windChangeTimer >= WIND_UPDATE_FREQ_SEC) {
+                if (timeSinceWindChange >= WIND_UPDATE_FREQ_SEC) {
                     wind.update();
-                    windChangeTimer = 0;
+                    timeSinceWindChange = 0;
                 }
             }
 
@@ -462,13 +467,22 @@ class Game extends Pane {
             }
 
             private void fillPondsWithRain() {
-                if (timer >= RAIN_FREQUENCY) {
+                if (timeSinceLastRain >= RAIN_FREQUENCY) {
                     for (DistanceLine distanceLine : distanceLines) {
-                        Pond p = distanceLine.getPond();
-                        Cloud c = distanceLine.getCloud();
+                        Pond p =
+                            distanceLine.getStaticEndpoint() instanceof Pond ?
+                                    (Pond) distanceLine.getStaticEndpoint()
+                                    : null;
+                        Cloud c =
+                            distanceLine.getDynamicEndpoint() instanceof Cloud ?
+                                    (Cloud) distanceLine.getDynamicEndpoint()
+                                    : null;
+                        if (p == null || c == null)
+                            throw new IllegalStateException("Instance of " +
+                                    "distance line not a pond, cloud pair");
                         fillPondInProportionToCloudDistance(p, c, distanceLine);
                     }
-                    timer = 0;
+                    timeSinceLastRain = 0;
                 }
             }
 
@@ -509,7 +523,8 @@ class Game extends Pane {
     }
 
     private boolean isHelicopterWithinHelipad() {
-        return (bounds.getBoundFor(helicopter)).containedIn(bounds.getBoundFor(helipad));
+        return (bounds.getBoundFor(helicopter)).containedIn(
+                bounds.getBoundFor(helipad));
     }
 
     public void handleLeftKeyPressed() {
@@ -574,20 +589,9 @@ class DistanceLines extends Pane implements Updatable, Iterable<DistanceLine> {
 
     @Override
     public void update() {
-        for (DistanceLine d : distanceLines) {
+        for (DistanceLine d : distanceLines)
             d.update();
-        }
         tryDeletingDistanceLinesMarkedForDeletion();
-//        Iterator<DistanceLine> iterator = distanceLines.iterator();
-//        for (int i = 0; i < distanceLines.size(); i++) {
-//            DistanceLine d = iterator.next();
-//            if (d.getCloud().isOutOfPlay()) {
-//                getChildren().remove(d);
-//                iterator.remove();
-//            }
-//            else
-//                d.update();
-//        }
     }
 
     private void tryDeletingDistanceLinesMarkedForDeletion() {
@@ -615,17 +619,16 @@ class DistanceLines extends Pane implements Updatable, Iterable<DistanceLine> {
 // TODO:  shows the distance of the line *next to the line* (right now it's
 //  sitting on top of the line)
 class DistanceLine extends GameObject implements Updatable {
-    private Cloud cloud;
-    private Pond pond;
+    private GameObject staticEndpoint, dynamicEndpoint;
     private Line line;
     private GameText distance;
 
-    public DistanceLine(Pond pond, Cloud cloud) {
-        super(pond.getPosition());
-        this.cloud = cloud;
-        this.pond = pond;
+    public DistanceLine(GameObject staticEndpoint, GameObject dynamicEndpoint) {
+        super(staticEndpoint.getPosition());
+        this.staticEndpoint = staticEndpoint;
+        this.dynamicEndpoint = dynamicEndpoint;
 
-        setupLineShape(pond, cloud);
+        setupLineShape();
         setupDistanceText();
     }
 
@@ -633,7 +636,7 @@ class DistanceLine extends GameObject implements Updatable {
         distance = new GameText(String.valueOf((int) getDistance()),
                 Game.DISTANCE_LINE_COLOR);
         setDistanceTextToMidpoint();
-        this.getChildren().add(distance);
+        getChildren().add(distance);
     }
 
     private void setDistanceTextToMidpoint() {
@@ -642,20 +645,22 @@ class DistanceLine extends GameObject implements Updatable {
         distance.setTranslateY(midpoint.getY());
     }
 
-    private void setupLineShape(Pond pond, Cloud cloud) {
-        line = new Line(pond.getPosition().getX(), pond.getPosition().getY(),
-                cloud.getPosition().getX(), cloud.getPosition().getY());
+    private void setupLineShape() {
+        line = new Line(staticEndpoint.getPosition().getX(),
+                staticEndpoint.getPosition().getY(),
+                dynamicEndpoint.getPosition().getX(),
+                dynamicEndpoint.getPosition().getY());
         line.setStrokeWidth(Game.DISTANCE_LINE_WIDTH);
         line.setStroke(Game.DISTANCE_LINE_COLOR);
-        this.getChildren().add(line);
+        getChildren().add(line);
     }
 
     @Override
     public void update() {
-        if (cloud == null)
+        if (dynamicEndpoint == null)
             return;
-        line.setEndX(cloud.getPosition().getX());
-        line.setEndY(cloud.getPosition().getY());
+        line.setEndX(dynamicEndpoint.getPosition().getX());
+        line.setEndY(dynamicEndpoint.getPosition().getY());
         updateDistanceText();
     }
 
@@ -675,12 +680,12 @@ class DistanceLine extends GameObject implements Updatable {
         return Math.sqrt(squaredSumOfX + squaredSumOfY);
     }
 
-    public Pond getPond() {
-        return pond;
+    public GameObject getStaticEndpoint() {
+        return staticEndpoint;
     }
 
-    public Cloud getCloud() {
-        return cloud;
+    public GameObject getDynamicEndpoint() {
+        return dynamicEndpoint;
     }
 }
 
