@@ -41,7 +41,7 @@ public class GameApp extends Application {
         scene = new Scene(game, Game.GAME_WIDTH, Game.GAME_HEIGHT);
         primaryStage.setScene(scene);
         setupEventHandlers();
-        primaryStage.setResizable(false);
+//        primaryStage.setResizable(false);
         primaryStage.setTitle("RainMaker");
         primaryStage.show();
     }
@@ -110,6 +110,14 @@ class Game extends Pane {
     public static final int BLIMP_TEXT_FONT_SIZE = 16;
     public static final int REFUEL_RATE = 30;
     public static final double REFUELING_SPEED_DIFF_MARGIN = 0.1;
+    public static final double BLIMP_MIN_SPEED = 0.7;
+    public static final double BLIMP_MAX_SPEED = 1;
+    public static final double BLIMP_MIN_SPEED_OFFSET = 0.2;
+    public static final double BLIMP_MAX_SPEED_OFFSET = 0.4;
+    public static final double BLIMP_MIN_FUEL = 5000;
+    public static final double BLIMP_MAX_FUEL = 10000;
+    public static final int BLIMP_RESPAWN_ATTEMPT_FREQ_SEC = 1;
+    public static final int BLIMP_RESPAWN_CHANCE_PERCENT = 3;
 
     public static final Color FUEL_GAUGE_COLOR = Color.MAROON;
     public static final int HELIBODY_SIZE = 75;
@@ -130,7 +138,7 @@ class Game extends Pane {
 
     private Ponds ponds;
     private Clouds clouds;
-    private Blimp blimp; // TODO: collection of blimps
+    private Blimps blimps;
     private Wind wind;
     private Helipad helipad;
     private Helicopter helicopter;
@@ -168,25 +176,18 @@ class Game extends Pane {
         this.getChildren().clear();
         initPonds();
         initClouds();
-        initBlimps();
+        blimps = new Blimps();
         this.helipad = makeHelipad();
         this.helicopter = makeHelicopter();
         initBounds();
         initDistanceLines();
-        // TODO: blimp -> blimps
-        this.getChildren().addAll(ponds, clouds, blimp, helipad, helicopter,
+        this.getChildren().addAll(helipad, ponds, clouds, blimps, helicopter,
                 bounds,
                 distanceLines);
 
         initWind();
         makeGameLoop();
         loop.start();
-    }
-
-    // TODO: instantiate blimps
-    private void initBlimps() {
-        blimp = new Blimp(new Point2D(0, 400), 0.5, 0, 10000);
-
     }
 
     private void initWind() {
@@ -212,10 +213,6 @@ class Game extends Pane {
                 helipad.getBoundsInParent().getHeight())));
         bounds.add(new CircleBound(helicopter,
                 new Circle(ROTOR_LENGTH / 2)));
-        // TODO: blimp -> blimps
-        bounds.add(new RectangleBound(blimp, new Rectangle(
-                blimp.getBoundsInParent().getWidth(),
-                blimp.getBoundsInParent().getHeight())));
     }
 
     private void initClouds() {
@@ -269,6 +266,14 @@ class Game extends Pane {
         wind.addObserver(cloud);
     }
 
+    private void spawnBlimp() {
+        Blimp b = Blimp.makeBlimp();
+        blimps.add(b);
+        bounds.add(new RectangleBound(b,
+                new Rectangle(b.getBoundsInLocal().getWidth(),
+                        b.getBoundsInLocal().getHeight())));
+    }
+
     private static Pond makePond() {
         Point2D position =
                 randomPositionInBound(new Point2D(0, (GAME_HEIGHT * (0.33))),
@@ -285,16 +290,20 @@ class Game extends Pane {
         AnimationTimer loop = new AnimationTimer() {
             private double old = -1;
             private double timer = 0;
-            private double windTimer = 0;
+            private double windChangeTimer = 0;
+            private double blimpRespawnTimer = 0;
 
             @Override
             public void handle(long now) {
                 double delta = calculateDelta(now);
                 timer += delta;
-                windTimer += delta;
+                windChangeTimer += delta;
+                blimpRespawnTimer += delta;
 
+                removeBoundsOfDeadObjects();
                 updateGameObjects();
                 updateWind();
+                trySpawningBlimp();
                 refuelIfNearBlimp();
                 seedIfNearCloud();
                 fillPondsWithRain();
@@ -304,16 +313,44 @@ class Game extends Pane {
                 showWinDialogIfConditionsMet();
             }
 
-            private void refuelIfNearBlimp() {
-                if (isRefuelingPossible()) {
-                    double extractedFuel = blimp.extractFuel();
-                    helicopter.refuelBy(extractedFuel);
+            private void updateGameObjects() {
+                blimps.update();
+                helicopter.update();
+                clouds.update();
+                ponds.update();
+                bounds.update();
+                distanceLines.update();
+            }
+
+            private void removeBoundsOfDeadObjects() {
+                for (Bound b : bounds) {
+                    GameObject gameObject = b.getBoundedObject();
+                    if (gameObject instanceof Blimp blimp
+                            && blimp.getState() instanceof DeadBlimp)
+                        bounds.markForDeletion(b);
                 }
             }
 
-            private boolean isRefuelingPossible() {
-                var helicopterBounds = bounds.getFor(helicopter);
-                var blimpBounds = bounds.getFor(blimp);
+            private void trySpawningBlimp() {
+                if (blimpRespawnTimer >= BLIMP_RESPAWN_ATTEMPT_FREQ_SEC) {
+                    int random = (int) randomInRange(0, 100);
+                    if (random <= BLIMP_RESPAWN_CHANCE_PERCENT)
+                        spawnBlimp();
+                    blimpRespawnTimer = 0;
+                }
+            }
+
+            private void refuelIfNearBlimp() {
+                for (Blimp b : blimps)
+                    if (isRefuelingPossible(b)) {
+                        double extractedFuel = b.extractFuel();
+                        helicopter.refuelBy(extractedFuel);
+                    }
+            }
+
+            private boolean isRefuelingPossible(Blimp blimp) {
+                var helicopterBounds = bounds.getBoundFor(helicopter);
+                var blimpBounds = bounds.getBoundFor(blimp);
                 boolean isColliding =
                         helicopterBounds.collidesWith(blimpBounds);
                 boolean isSpeedMatching = Math.abs(helicopter.getSpeed()
@@ -323,9 +360,9 @@ class Game extends Pane {
             }
 
             private void updateWind() {
-                if (windTimer >= WIND_UPDATE_FREQ_SEC) {
+                if (windChangeTimer >= WIND_UPDATE_FREQ_SEC) {
                     wind.update();
-                    windTimer = 0;
+                    windChangeTimer = 0;
                 }
             }
 
@@ -338,15 +375,6 @@ class Game extends Pane {
                         respawnCloud();
                     }
                 }
-            }
-
-            private void updateGameObjects() {
-                blimp.update(); // TODO: blimp -> blimps
-                helicopter.update();
-                clouds.update();
-                ponds.update();
-                bounds.update();
-                distanceLines.update();
             }
 
             private void showWinDialogIfConditionsMet() {
@@ -445,9 +473,9 @@ class Game extends Pane {
             }
 
             private void seedIfNearCloud() {
-                var helicopterBounds = bounds.getFor(helicopter);
+                var helicopterBounds = bounds.getBoundFor(helicopter);
                 for (Cloud c : clouds) {
-                    var cBound = bounds.getFor(c);
+                    var cBound = bounds.getBoundFor(c);
                     if (helicopterBounds.collidesWith(cBound)
                             && isHelicopterTryingToSeed) {
                         c.seed();
@@ -469,7 +497,7 @@ class Game extends Pane {
     }
 
     private boolean isHelicopterWithinHelipad() {
-        return (bounds.getFor(helicopter)).containedIn(bounds.getFor(helipad));
+        return (bounds.getBoundFor(helicopter)).containedIn(bounds.getBoundFor(helipad));
     }
 
     public void handleLeftKeyPressed() {
@@ -552,6 +580,8 @@ class DistanceLines extends Pane implements Updatable, Iterable<DistanceLine> {
  * Is a GameObject like Bound is. Postion defined as one end of the
  * DistanceLine, preferably stationary (i.e. Pond)
  */
+// TODO:  shows the distance of the line *next to the line* (right now it's
+//  sitting on top of the line)
 class DistanceLine extends GameObject implements Updatable {
     private Cloud cloud;
     private Pond pond;
@@ -622,25 +652,27 @@ class DistanceLine extends GameObject implements Updatable {
     }
 }
 
-class BoundsPane extends Pane implements Updatable {
+class BoundsPane extends Pane implements Updatable, Iterable<Bound> {
     private List<Bound> bounds;
+    private List<Bound> markedForDeletion;
 
     public BoundsPane() {
         bounds = new LinkedList<>();
-        this.setVisible(false);
+        markedForDeletion = new LinkedList<>();
+        setVisible(false);
     }
 
     public void add(CircleBound circleBound) {
         bounds.add(circleBound);
-        this.getChildren().add(circleBound);
+        getChildren().add(circleBound);
     }
 
     public void add(RectangleBound rectangleBound) {
         bounds.add(rectangleBound);
-        this.getChildren().add(rectangleBound);
+        getChildren().add(rectangleBound);
     }
 
-    public Bound getFor(GameObject gameObject) {
+    public Bound getBoundFor(GameObject gameObject) {
         for (Bound b : bounds) {
             if (b.getBoundedObject() == gameObject)
                 return b;
@@ -648,14 +680,35 @@ class BoundsPane extends Pane implements Updatable {
         return null;
     }
 
+    public void markForDeletion(Bound bound) {
+        boolean validDeletion = bounds.contains(bound);
+        if (validDeletion)
+            markedForDeletion.add(bound);
+    }
+
     @Override
     public void update() {
-        for (Bound b : bounds)
+        for (Bound b : bounds) {
             b.update();
+        }
+        tryDeletingBoundsMarkedForDeletion();
+    }
+
+    private void tryDeletingBoundsMarkedForDeletion() {
+        if (markedForDeletion.size() > 0) {
+            markedForDeletion.forEach(bound -> getChildren().remove(bound));
+            bounds.removeAll(markedForDeletion);
+            markedForDeletion.clear();
+        }
     }
 
     public void toggleVisibility() {
         this.setVisible(!this.isVisible());
+    }
+
+    @Override
+    public Iterator<Bound> iterator() {
+        return bounds.iterator();
     }
 }
 
@@ -686,7 +739,7 @@ class Bound extends GameObject implements Updatable {
 
     @Override
     public void update() {
-        this.setPosition(new Point2D(boundedObject.getPosition().getX(),
+        this.updatePositionTo(new Point2D(boundedObject.getPosition().getX(),
                 boundedObject.getPosition().getY()));
         this.setTranslateX(this.getPosition().getX());
         this.setTranslateY(this.getPosition().getY());
@@ -759,24 +812,27 @@ class CircleBound extends Bound {
 
 /**
  * Is-a Group to treat game objects as Node objects to be put straight onto
- * scene graph. Position treated as center of object (like Circle; unlike
- * Rectangle, etc.). So GameObjects who aren't Circles will have to translate
- * their x and y by half their width and height respectively. Standardizing
- * position attribute of all GameObjects like this makes it consistent and
- * simplifies distance calculations between GameObjects.
+ * scene graph. Position treated as center of object (like Circle but unlike
+ * Rectangle, etc.). In other words,  GameObjects who aren't Circles will have
+ * to translate their x- and y-position by half their width and height
+ * respectively. Standardizing the position attribute of all GameObjects like
+ * this makes it consistent and simplifies distance calculations between
+ * GameObjects.
+ * Additionally, GameObject does not implement Updatable because it cannot be
+ * assumed that all inheritors will have an updatable quality (e.g. Helipad).
  */
 abstract class GameObject extends Group {
     private Point2D position;
 
-    public GameObject(Point2D startPosition) {
-        position = startPosition;
+    public GameObject(Point2D position) {
+        this.position = position;
     }
 
     public Point2D getPosition() {
         return position;
     }
 
-    public void setPosition(Point2D position) {
+    public void updatePositionTo(Point2D position) {
         this.position = position;
     }
 }
@@ -895,7 +951,17 @@ class Blimp extends TransientGameObject implements Updatable {
     private BlimpBody body;
     private BlimpBlade blade;
     private GameText fuelText;
-    private double fuel;
+    private BlimpState state;
+
+    public static Blimp makeBlimp() {
+        Blimp b = new Blimp(
+                new Point2D(0, Game.randomInRange(0, Game.GAME_HEIGHT)),
+                Game.randomInRange(Game.BLIMP_MIN_SPEED, Game.BLIMP_MAX_SPEED),
+                Game.randomInRange(Game.BLIMP_MIN_SPEED_OFFSET,
+                        Game.BLIMP_MAX_SPEED_OFFSET),
+                Game.randomInRange(Game.BLIMP_MIN_FUEL, Game.BLIMP_MAX_FUEL));
+        return b;
+    }
 
     public Blimp(Point2D initialPosition, double speed, double speedOffset,
                  double fuel) {
@@ -904,10 +970,10 @@ class Blimp extends TransientGameObject implements Updatable {
         addFuelGauge(fuel);
         this.getTransforms().add(new Translate(initialPosition.getX(),
                 initialPosition.getY()));
+        state = new CreatedBlimp(fuel);
     }
 
     private void addFuelGauge(double fuel) {
-        this.fuel = fuel;
         fuelText = new GameText(String.valueOf((int) fuel),
                 Game.BLIMP_FUEL_TEXT_COLOR);
         fuelText.setSize(Game.BLIMP_TEXT_FONT_SIZE);
@@ -930,55 +996,93 @@ class Blimp extends TransientGameObject implements Updatable {
 
     @Override
     public void update() {
-        Point2D newPosition = new Point2D(
-                this.getPosition().getX() + this.getSpeed(),
-                this.getPosition().getY());
-        this.setPosition(newPosition);
+        state.updatePosition(this);
+        state.updateFuelText(fuelText);
+    }
 
-        this.getTransforms().clear();
-        this.getTransforms().add(
+    public double extractFuel() {
+        return state.extractFuel();
+    }
+
+    public void changeState(BlimpState state) {
+        this.state = state;
+    }
+
+    public BlimpState getState() {
+        return state;
+    }
+}
+
+interface BlimpState {
+    void updatePosition(Blimp blimp);
+    void updateFuelText(GameText fuelText);
+    double extractFuel();
+}
+
+class CreatedBlimp implements BlimpState {
+    private double fuel;
+
+    public CreatedBlimp(double fuel) {
+        this.fuel = fuel;
+    }
+
+    @Override
+    public void updatePosition(Blimp blimp) {
+        Point2D newPosition = new Point2D(
+                blimp.getPosition().getX() + blimp.getSpeed(),
+                blimp.getPosition().getY());
+        blimp.updatePositionTo(newPosition);
+
+        blimp.getTransforms().clear();
+        blimp.getTransforms().add(
                 new Translate(newPosition.getX(), newPosition.getY()));
 
+        if (blimp.getPosition().getX()
+                + (Game.BLIMP_BODY_SIZE.getX() / 2) > 0)
+            blimp.changeState(new InViewBlimp(fuel));
+    }
+
+    @Override
+    public void updateFuelText(GameText fuelText) {
+        /* impossible */
+    }
+
+    @Override
+    public double extractFuel() {
+        /* impossible */
+        return 0;
+    }
+
+}
+
+class InViewBlimp implements BlimpState {
+    private double fuel;
+
+    public InViewBlimp(double fuel) {
+        this.fuel = fuel;
+    }
+
+    @Override
+    public void updatePosition(Blimp blimp) {
+        Point2D newPosition = new Point2D(
+                blimp.getPosition().getX() + blimp.getSpeed(),
+                blimp.getPosition().getY());
+        blimp.updatePositionTo(newPosition);
+
+        blimp.getTransforms().clear();
+        blimp.getTransforms().add(
+                new Translate(newPosition.getX(), newPosition.getY()));
+
+        if (blimp.getPosition().getX()
+                - (Game.BLIMP_BODY_SIZE.getX() / 2) > Game.GAME_WIDTH)
+            blimp.changeState(new DeadBlimp());
+    }
+
+    @Override
+    public void updateFuelText(GameText fuelText) {
         fuelText.setText(String.valueOf((int) fuel));
     }
 
-    public double extractFuel() {
-        if (fuel >= Game.REFUEL_RATE) {
-            fuel -= Game.REFUEL_RATE;
-            return Game.REFUEL_RATE;
-        } else {
-            double remainder = fuel;
-            fuel = 0;
-            return remainder;
-        }
-    }
-}
-
-abstract class BlimpState implements Updatable {
-    double fuel;
-    /**
-     * State dependent behaviors for Blimp:
-     * 1. extractFuel() — only possible when InView
-     * 2.
-     */
-    abstract double extractFuel();
-
-}
-
-class CreatedBlimp extends BlimpState {
-
-    @Override
-    public double extractFuel() {
-        return 0;
-    }
-
-    @Override
-    public void update() {
-
-    }
-}
-
-class InViewBlimp extends BlimpState {
     @Override
     public double extractFuel() {
         if (fuel >= Game.REFUEL_RATE) {
@@ -991,28 +1095,68 @@ class InViewBlimp extends BlimpState {
         }
 
     }
-
-    @Override
-    public void update() {
-
-    }
 }
 
-class DeadBlimp extends BlimpState {
+class DeadBlimp implements BlimpState {
+    @Override
+    public void updatePosition(Blimp blimp) {
+        /* impossible */
+    }
 
     @Override
-    double extractFuel() {
+    public void updateFuelText(GameText fuelText) {
+        /* impossible */
+    }
+
+    @Override
+    public double extractFuel() {
+        /* impossible */
         return 0;
     }
+}
+
+class Blimps extends Pane implements Updatable, Iterable<Blimp> {
+    private List<Blimp> blimps;
+    private List<Blimp> markedForDeletion;
+
+    public Blimps() {
+        blimps = new LinkedList<>();
+        markedForDeletion = new LinkedList<>();
+    }
+
+    public void add(Blimp b) {
+        blimps.add(b);
+        getChildren().add(b);
+    }
 
     @Override
     public void update() {
+        updateEachOrMarkForDeletion();
+        tryDeletingDeadBlimps();
+    }
 
+    private void updateEachOrMarkForDeletion() {
+        for (Blimp b : blimps) {
+            if (b.getState() instanceof DeadBlimp)
+                markedForDeletion.add(b);
+            else
+                b.update();
+        }
+    }
+
+    private void tryDeletingDeadBlimps() {
+        if (markedForDeletion.size() > 0) {
+            markedForDeletion.forEach(blimp -> getChildren().remove(blimp));
+            blimps.removeAll(markedForDeletion);
+            markedForDeletion.clear();
+        }
+    }
+
+    @Override
+    public Iterator<Blimp> iterator() {
+        return blimps.iterator();
     }
 }
-
-
-
 
 class Pond extends GameObject implements Updatable {
     private Circle pondCircle;
@@ -1145,6 +1289,15 @@ class Clouds extends Pane implements Updatable, Iterable<Cloud> {
     }
 }
 
+// TODO: "When the saturation reaches 30% the rainfall will start to fill the
+//  pond at a rate *proportional to the cloud’s saturation*."
+// TODO: "The cloud will *automatically lose saturation* when it’s not being
+//  seeded at a rate that allows the percentage to drop about 1%/second."
+// TODO: "So let's choose the Y coordinate randomly, but, such that it is
+//  within functional distance of at least one pond. I suggest rotating through
+//  the ponds such that the first new cloud is within Y-delta of the first pond,
+//  then the next new cloud is within Y-delta of the second pond, and so on.
+//  This will guarantee that you can eventually fill all of the ponds."
 class Cloud extends TransientGameObject implements Updatable {
     private Circle cloudCircle;
     private Color fill;
@@ -1246,7 +1399,7 @@ class AliveCloud implements CloudState {
         Point2D currentPosition = cloud.getPosition();
         Point2D newPosition = new Point2D(currentPosition.getX()
                 + cloud.getSpeed(), currentPosition.getY());
-        cloud.setPosition(newPosition);
+        cloud.updatePositionTo(newPosition);
         cloud.setTranslateX(cloud.getTranslateX() + cloud.getSpeed());
 
         if (cloud.getPosition().getX() + cloud.getRadius() >= 0)
@@ -1276,7 +1429,7 @@ class InPlayCloud implements CloudState {
         Point2D currentPosition = cloud.getPosition();
         Point2D newPosition = new Point2D(currentPosition.getX()
                 + cloud.getSpeed(), currentPosition.getY());
-        cloud.setPosition(newPosition);
+        cloud.updatePositionTo(newPosition);
         cloud.setTranslateX(cloud.getTranslateX() + cloud.getSpeed());
 
         if (cloud.getPosition().getX() - cloud.getRadius() > 800)
@@ -1392,7 +1545,7 @@ class Helicopter extends GameObject implements Updatable {
                 heading, speed, fuel, heliBlade, this);
 
         if (newPosition != null) {
-            this.setPosition(newPosition);
+            this.updatePositionTo(newPosition);
             this.getTransforms().clear();
             this.getTransforms().addAll(
                     new Translate(this.getPosition().getX(),
