@@ -41,7 +41,7 @@ public class GameApp extends Application {
         scene = new Scene(game, Game.GAME_WIDTH, Game.GAME_HEIGHT);
         primaryStage.setScene(scene);
         setupEventHandlers();
-//        primaryStage.setResizable(false);
+        primaryStage.setResizable(false);
         primaryStage.setTitle("RainMaker");
         primaryStage.show();
     }
@@ -300,7 +300,8 @@ class Game extends Pane {
                 windChangeTimer += delta;
                 blimpRespawnTimer += delta;
 
-                removeBoundsOfDeadObjects();
+                markForDeletionBoundsOfDeadObjects();
+                markForDeletionDistanceLinesOfDeadClouds();
                 updateGameObjects();
                 updateWind();
                 trySpawningBlimp();
@@ -322,11 +323,22 @@ class Game extends Pane {
                 distanceLines.update();
             }
 
-            private void removeBoundsOfDeadObjects() {
+            private void markForDeletionDistanceLinesOfDeadClouds() {
+                // TODO: implement marking distance lines for deletion
+                for (DistanceLine d : distanceLines) {
+                    if (d.getCloud().getState() instanceof DeadCloud)
+                        distanceLines.markForDeletion(d);
+                }
+            }
+
+            private void markForDeletionBoundsOfDeadObjects() {
                 for (Bound b : bounds) {
                     GameObject gameObject = b.getBoundedObject();
                     if (gameObject instanceof Blimp blimp
                             && blimp.getState() instanceof DeadBlimp)
+                        bounds.markForDeletion(b);
+                    else if (gameObject instanceof Cloud cloud
+                            && cloud.getState() instanceof DeadCloud)
                         bounds.markForDeletion(b);
                 }
             }
@@ -541,33 +553,53 @@ class Game extends Pane {
 
 class DistanceLines extends Pane implements Updatable, Iterable<DistanceLine> {
     private List<DistanceLine> distanceLines;
+    private List<DistanceLine> markedForDeletion;
 
     public DistanceLines() {
         distanceLines = new LinkedList<>();
-        this.setVisible(false);
+        markedForDeletion = new LinkedList<>();
+        setVisible(false);
     }
 
     public void add(DistanceLine dLine) {
         distanceLines.add(dLine);
-        this.getChildren().add(dLine);
+        getChildren().add(dLine);
+    }
+
+    public void markForDeletion(DistanceLine dLine) {
+        boolean validDeletion = distanceLines.contains(dLine);
+        if (validDeletion)
+            markedForDeletion.add(dLine);
     }
 
     @Override
     public void update() {
-        Iterator<DistanceLine> iterator = distanceLines.iterator();
-        for (int i = 0; i < distanceLines.size(); i++) {
-            DistanceLine d = iterator.next();
-            if (d.getCloud().isOutOfPlay()) {
-                this.getChildren().remove(d);
-                iterator.remove();
-            }
-            else
-                d.update();
+        for (DistanceLine d : distanceLines) {
+            d.update();
+        }
+        tryDeletingDistanceLinesMarkedForDeletion();
+//        Iterator<DistanceLine> iterator = distanceLines.iterator();
+//        for (int i = 0; i < distanceLines.size(); i++) {
+//            DistanceLine d = iterator.next();
+//            if (d.getCloud().isOutOfPlay()) {
+//                getChildren().remove(d);
+//                iterator.remove();
+//            }
+//            else
+//                d.update();
+//        }
+    }
+
+    private void tryDeletingDistanceLinesMarkedForDeletion() {
+        if (markedForDeletion.size() > 0) {
+            markedForDeletion.forEach(dLine -> getChildren().remove(dLine));
+            distanceLines.removeAll(markedForDeletion);
+            markedForDeletion.clear();
         }
     }
 
     public void toggleVisibility() {
-        this.setVisible(!this.isVisible());
+        setVisible(!isVisible());
     }
 
     @Override
@@ -688,9 +720,8 @@ class BoundsPane extends Pane implements Updatable, Iterable<Bound> {
 
     @Override
     public void update() {
-        for (Bound b : bounds) {
+        for (Bound b : bounds)
             b.update();
-        }
         tryDeletingBoundsMarkedForDeletion();
     }
 
@@ -1252,10 +1283,12 @@ class Wind implements Updatable {
 
 class Clouds extends Pane implements Updatable, Iterable<Cloud> {
     private List<Cloud> clouds;
+    private List<Cloud> markedForDeletion;
     private Wind wind;
 
     public Clouds(Wind wind) {
         clouds = new LinkedList<>();
+        markedForDeletion = new LinkedList<>();
         this.wind = wind;
     }
 
@@ -1266,16 +1299,24 @@ class Clouds extends Pane implements Updatable, Iterable<Cloud> {
 
     @Override
     public void update() {
-        Iterator<Cloud> iterator = clouds.iterator();
-        for (int i = 0; i < clouds.size(); i++) {
-            Cloud c = iterator.next();
-            if (c.isOutOfPlay()) {
-                this.getChildren().remove(c);
-                wind.removeObserver(c);
-                iterator.remove();
-            }
+        updateOrMarkForDeletion();
+        tryDeletingDeadClouds();
+    }
+
+    private void updateOrMarkForDeletion() {
+        for (Cloud c : clouds) {
+            if (c.getState() instanceof DeadCloud)
+                markedForDeletion.add(c);
             else
                 c.update();
+        }
+    }
+
+    private void tryDeletingDeadClouds() {
+        if (markedForDeletion.size() > 0) {
+            markedForDeletion.forEach(cloud -> getChildren().remove(cloud));
+            clouds.removeAll(markedForDeletion);
+            markedForDeletion.clear();
         }
     }
 
@@ -1374,10 +1415,9 @@ class Cloud extends TransientGameObject implements Updatable {
         return cloudCircle.getRadius();
     }
 
-    public boolean isOutOfPlay() {
-        return state instanceof DeadCloud;
+    public CloudState getState() {
+        return state;
     }
-
 }
 
 interface CloudState {
