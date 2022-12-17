@@ -13,10 +13,7 @@ import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
-import javafx.scene.shape.Circle;
-import javafx.scene.shape.Line;
-import javafx.scene.shape.Rectangle;
-import javafx.scene.shape.Shape;
+import javafx.scene.shape.*;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
@@ -24,6 +21,7 @@ import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Scale;
 import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
+import javafx.util.Pair;
 
 import java.text.DecimalFormat;
 import java.util.*;
@@ -82,13 +80,16 @@ class Game extends Pane {
     public static final int MIN_CLOUDS = 3;
     public static final int MAX_CLOUDS = 5;
     public static final Color CLOUD_COLOR = Color.WHITE;
+    public static final Color CLOUD_STROKE_COLOR = Color.GREY;
     public static final Color CLOUD_TEXT_COLOR = Color.BLUE;
-    public static final int MIN_CLOUD_RADIUS = 30;
-    public static final int MAX_CLOUD_RADIUS = 70;
+    public static final int MIN_CLOUD_MINOR_RADIUS = 50;
+    public static final int MAX_CLOUD_MINOR_RADIUS = 60;
+    public static final int MIN_CLOUD_MAJOR_RADIUS = 60;
+    public static final int MAX_CLOUD_MAJOR_RADIUS = 90;
     public static final double RAIN_FREQUENCY = 0.6;
 
     public static final double MEAN_WIND_SPEED = 0.4;
-    public static final double STD_DEV_WIND_SPEED = 0.2;
+    public static final double STD_DEV_WIND_SPEED = 0.15;
     public static final int WIND_UPDATE_FREQ_SEC = 5;
     public static final double DISTANCE_LINE_WIDTH = 1;
     public static final Paint DISTANCE_LINE_COLOR = Color.WHITE;
@@ -116,8 +117,8 @@ class Game extends Pane {
     public static final double BLIMP_MAX_SPEED_OFFSET = 0.4;
     public static final double BLIMP_MIN_FUEL = 5000;
     public static final double BLIMP_MAX_FUEL = 10000;
-    public static final int BLIMP_RESPAWN_ATTEMPT_FREQ_SEC = 1;
-    public static final int BLIMP_RESPAWN_CHANCE_PERCENT = 3;
+    public static final int BLIMP_RESPAWN_ATTEMPT_FREQ_SEC = 5;
+    public static final int BLIMP_RESPAWN_CHANCE_PERCENT = 18;
 
     public static final Color FUEL_GAUGE_COLOR = Color.MAROON;
     public static final int HELIBODY_SIZE = 75;
@@ -206,8 +207,9 @@ class Game extends Pane {
     private void initBounds() {
         bounds = new BoundsPane();
         for (Cloud c : clouds)
-            bounds.add(new CircleBound(c,
-                    new Circle(c.getBoundsInParent().getWidth() / 2)));
+            bounds.add(new RectangleBound(c,
+                    new Rectangle(c.getBoundsInLocal().getWidth(),
+                            c.getBoundsInLocal().getHeight())));
         bounds.add(new RectangleBound(helipad, new Rectangle(
                 helipad.getBoundsInParent().getWidth(),
                 helipad.getBoundsInParent().getHeight())));
@@ -227,6 +229,8 @@ class Game extends Pane {
             ponds.add(makePond());
     }
 
+    // TODO: factory method for helicopter, helipad, cloud, etc. defined in
+    //  their own class (like the way blimp does it, see below)
     private static Helicopter makeHelicopter() {
         Helicopter helicopter = new Helicopter(HELIPAD_POSITION,
                 HELICOPTER_START_FUEL);
@@ -243,24 +247,28 @@ class Game extends Pane {
                     new Point2D(0, (GAME_HEIGHT * (0.33))),
                     new Point2D(GAME_WIDTH, GAME_HEIGHT));
         Cloud cloud = new Cloud(position,
-                randomInRange(MIN_CLOUD_RADIUS, MAX_CLOUD_RADIUS),
+                randomInRange(MIN_CLOUD_MAJOR_RADIUS, MAX_CLOUD_MAJOR_RADIUS),
+                randomInRange(MIN_CLOUD_MINOR_RADIUS, MAX_CLOUD_MINOR_RADIUS),
                 MEAN_WIND_SPEED, randomInRange(0, STD_DEV_WIND_SPEED));
-        cloud.setTranslateX(position.getX());
-        cloud.setTranslateY(position.getY());
+        cloud.getTransforms().add(
+                new Translate(position.getX(), position.getY()));
         return cloud;
     }
 
     private void respawnCloud() {
         Point2D position = randomPositionInBound(
-                new Point2D(-MAX_CLOUD_RADIUS, (GAME_HEIGHT * (0.33))),
-                new Point2D(-MAX_CLOUD_RADIUS, GAME_HEIGHT));
-        Cloud cloud = new Cloud(position, randomInRange(MIN_CLOUD_RADIUS,
-            MAX_CLOUD_RADIUS), MEAN_WIND_SPEED, randomInRange(0, 0.25));
-        cloud.setTranslateX(position.getX());
-        cloud.setTranslateY(position.getY());
+            new Point2D(-MAX_CLOUD_MAJOR_RADIUS * 2, (GAME_HEIGHT * (0.33))),
+            new Point2D(-MAX_CLOUD_MAJOR_RADIUS * 2, GAME_HEIGHT));
+        Cloud cloud = new Cloud(position,
+                randomInRange(MIN_CLOUD_MAJOR_RADIUS, MAX_CLOUD_MAJOR_RADIUS),
+                randomInRange(MIN_CLOUD_MINOR_RADIUS, MAX_CLOUD_MINOR_RADIUS),
+                MEAN_WIND_SPEED, randomInRange(0, STD_DEV_WIND_SPEED));
+        cloud.getTransforms().add(
+                new Translate(position.getX(), position.getY()));
         clouds.add(cloud);
-        bounds.add(new CircleBound(cloud,
-                new Circle(cloud.getBoundsInParent().getWidth() / 2)));
+        bounds.add(new RectangleBound(cloud,
+                new Rectangle(cloud.getBoundsInLocal().getWidth(),
+                        cloud.getBoundsInLocal().getHeight())));
         for (Pond p : ponds)
             distanceLines.add(new DistanceLine(p, cloud));
         wind.addObserver(cloud);
@@ -384,13 +392,12 @@ class Game extends Pane {
             }
 
             private void tryRespawningClouds() {
-                if (clouds.getNumberOf() < 3)
+                if (clouds.getNumberOf() < MIN_CLOUDS)
                     respawnCloud();
-                else if (clouds.getNumberOf() < 5) {
+                else if (clouds.getNumberOf() < MAX_CLOUDS) {
                     int randomNumIn100 = (int) (Math.random() * 100);
-                    if (randomNumIn100 % 2 == 0) {
+                    if (randomNumIn100 % 2 == 0)
                         respawnCloud();
-                    }
                 }
             }
 
@@ -434,7 +441,7 @@ class Game extends Pane {
                             + " points. Give it another go, pilot?");
                 alert.setTitle("Mission Success");
                 alert.setHeaderText(
-                        "You managed to restore the Central Valley!");
+                        "You managed to restore the central valley!");
 
                 ButtonType yesButton = new ButtonType("Yes");
                 ButtonType noButton = new ButtonType("No");
@@ -458,7 +465,7 @@ class Game extends Pane {
                 alert.setTitle("Mission Failure");
                 alert.setHeaderText(
                         "Despite your best efforts the drought still has a " +
-                                "hold on the Central Valley.");
+                                "hold on the central valley.");
 
                 ButtonType yesButton = new ButtonType("Yes");
                 ButtonType noButton = new ButtonType("No");
@@ -904,6 +911,11 @@ class Ponds extends Pane implements Updatable, Iterable<Pond> {
     }
 }
 
+// TODO: figure out how to generalize Cloud and Blimp to TransientGameObject.
+//  Will also involve figuring out how state pattern will work
+//  (idea: generalized state pattern for TGO, Cloud and Blimp maintain their
+//  current state classes but just inherit and extend with their necessary
+//  behavior?)
 class TransientGameObject extends GameObject {
     private double speed;
     private double speedOffset;
@@ -1051,7 +1063,9 @@ class Blimp extends TransientGameObject implements Updatable {
 
 interface BlimpState {
     void updatePosition(Blimp blimp);
+
     void updateFuelText(GameText fuelText);
+
     double extractFuel();
 }
 
@@ -1191,6 +1205,109 @@ class Blimps extends Pane implements Updatable, Iterable<Blimp> {
     @Override
     public Iterator<Blimp> iterator() {
         return blimps.iterator();
+    }
+}
+
+class BezierOval extends Group {
+    public static final double CONTROL_POINT_STRENGTH = 1.3;
+
+    private double majorAxisRadius, minorAxisRadius;
+    private List<Pair<Point2D, Double>> endpoints;
+    private Ellipse baseOval, controlPointsOval;
+    private List<Point2D> controlPoints;
+    private Color fill, stroke;
+
+    public BezierOval(double majorAxisRadius, double minorAxisRadius,
+                      Color fill, Color stroke) {
+        this.majorAxisRadius = majorAxisRadius;
+        this.minorAxisRadius = minorAxisRadius;
+        baseOval = new Ellipse(majorAxisRadius, minorAxisRadius);
+        this.fill = fill;
+        this.stroke = stroke;
+        baseOval.setFill(fill);
+        getChildren().add(baseOval);
+        augmentOvalWithBezierSegments();
+    }
+
+    private void augmentOvalWithBezierSegments() {
+        makeControlPointOval();
+        setEndPoints();
+        setControlPoints();
+        makeBezierCurves();
+    }
+
+    private void makeControlPointOval() {
+        controlPointsOval = new Ellipse(
+                majorAxisRadius * CONTROL_POINT_STRENGTH,
+                minorAxisRadius * CONTROL_POINT_STRENGTH);
+    }
+
+    private void setEndPoints() {
+        endpoints = new LinkedList<>();
+        double theta = Game.randomInRange(50, 60);
+        while (theta <= 360) {
+            endpoints.add(new Pair<>(new Point2D(
+                majorAxisRadius * Math.cos(Math.toRadians(theta)),
+                minorAxisRadius * Math.sin(Math.toRadians(theta))), theta));
+            theta += Game.randomInRange(50, 60);
+        }
+    }
+
+    private void setControlPoints() {
+        controlPoints = new LinkedList<>();
+        for (int i = 0; i < endpoints.size() - 1; i++) {
+            makeControlPointForEndpoints(i, i + 1);
+        }
+        makeControlPointForEndpoints(endpoints.size() - 1, 0);
+
+    }
+
+    private void makeControlPointForEndpoints(
+            int startPointIndex, int endPointIndex) {
+        double startTheta = endpoints.get(startPointIndex).getValue();
+        double endTheta = endpoints.get(endPointIndex).getValue();
+        double controlTheta = startTheta + ((endTheta - startTheta) / 2);
+        if (endTheta < startTheta)
+            controlTheta += Math.toDegrees(Math.PI);
+
+        controlPoints.add(new Point2D(
+                controlPointsOval.getRadiusX()
+                        * Math.cos(Math.toRadians(controlTheta)),
+                controlPointsOval.getRadiusY()
+                        * Math.sin(Math.toRadians(controlTheta))));
+    }
+
+    private void makeBezierCurves() {
+        for (int i = 0; i < controlPoints.size(); i++) {
+            Point2D control = controlPoints.get(i);
+            Point2D start = endpoints.get(i).getKey();
+            Point2D end = endpoints.get((i + 1) % endpoints.size()).getKey();
+            QuadCurve bezier = new QuadCurve(
+                    start.getX(), start.getY(),
+                    control.getX(), control.getY(),
+                    end.getX(), end.getY()
+            );
+            bezier.setFill(fill);
+            bezier.setStroke(stroke);
+            getChildren().add(bezier);
+        }
+    }
+
+    public Color getFill() {
+        return fill;
+    }
+
+    public void setFill(Color fill) {
+        this.fill = fill;
+        getChildren().forEach(shape -> ((Shape) shape).setFill(fill));
+    }
+
+    public double getWidth() {
+        return 2 * controlPointsOval.getRadiusX();
+    }
+
+    public double getHeight() {
+        return 2 * controlPointsOval.getRadiusY();
     }
 }
 
@@ -1345,22 +1462,21 @@ class Clouds extends Pane implements Updatable, Iterable<Cloud> {
 //  then the next new cloud is within Y-delta of the second pond, and so on.
 //  This will guarantee that you can eventually fill all of the ponds."
 class Cloud extends TransientGameObject implements Updatable {
-    private Circle cloudCircle;
-    private Color fill;
+    private BezierOval cloudShape;
     private GameText percentSaturatedText;
     private int seedPercentage;
     private CloudState state;
 
-    public Cloud(Point2D initialPosition, double radius, double speed,
-                 double speedOffset) {
+    public Cloud(Point2D initialPosition, double majorAxisRadius,
+                 double minorAxisRadius, double speed, double speedOffset) {
         super(initialPosition, speed, speedOffset);
-        this.fill = Game.CLOUD_COLOR;
-        cloudCircle = new Circle(radius, fill);
+        cloudShape = new BezierOval(majorAxisRadius, minorAxisRadius,
+                Game.CLOUD_COLOR, Game.CLOUD_STROKE_COLOR);
 
         seedPercentage = 0;
         makePercentSaturatedText(Game.CLOUD_TEXT_COLOR);
 
-        this.getChildren().addAll(cloudCircle, percentSaturatedText);
+        this.getChildren().addAll(cloudShape, percentSaturatedText);
         state = new AliveCloud();
     }
 
@@ -1378,46 +1494,24 @@ class Cloud extends TransientGameObject implements Updatable {
 
     @Override
     public void update() {
-        state.update(this, cloudCircle, fill, percentSaturatedText,
-                seedPercentage);
+        state.updatePosition(this);
+        state.updateSaturationText(percentSaturatedText);
     }
 
     public void seed() {
-        state.seed(this, cloudCircle);
+        state.seed(cloudShape);
     }
 
     public boolean rain() {
-        return state.rain(this, cloudCircle);
+        return state.rain(cloudShape);
     }
 
-    public int getSeedPercentage() {
-        return seedPercentage;
+    public void changeState(CloudState state) {
+        this.state = state;
     }
 
-    public void incrementSeedPercentage() {
-        seedPercentage++;
-        int red = (int) (255 * ((Color) cloudCircle.getFill()).getRed());
-        int green =
-                (int) (255 * ((Color) cloudCircle.getFill()).getGreen());
-        int blue = (int) (255 * ((Color) cloudCircle.getFill()).getBlue());
-        fill = Color.rgb(--red, --green, --blue);
-    }
-
-    public void decrementSeedPercentage() {
-        seedPercentage--;
-        int red = (int) (255 * ((Color) cloudCircle.getFill()).getRed());
-        int green =
-                (int) (255 * ((Color) cloudCircle.getFill()).getGreen());
-        int blue = (int) (255 * ((Color) cloudCircle.getFill()).getBlue());
-        fill = Color.rgb(++red, ++green, ++blue);
-    }
-
-    public void changeState(CloudState cloudState) {
-        this.state = cloudState;
-    }
-
-    public double getRadius() {
-        return cloudCircle.getRadius();
+    public double getWidth() {
+        return cloudShape.getWidth();
     }
 
     public CloudState getState() {
@@ -1426,92 +1520,131 @@ class Cloud extends TransientGameObject implements Updatable {
 }
 
 interface CloudState {
+    void updatePosition(Cloud cloud);
 
-    void update(Cloud cloud, Circle cloudCircle, Color fill,
-                GameText percentSaturatedText, int seedPercentage);
+    void updateSaturationText(GameText saturationPercent);
 
-    void seed(Cloud cloud, Circle cloudCircle);
+    void seed(BezierOval cloudShape);
 
-    boolean rain(Cloud cloud, Circle cloudCircle);
+    boolean rain(BezierOval cloudShape);
 
 }
 
 class AliveCloud implements CloudState {
-
     @Override
-    public void update(Cloud cloud, Circle cloudCircle, Color fill,
-                       GameText percentSaturatedText, int seedPercentage) {
-        Point2D currentPosition = cloud.getPosition();
-        Point2D newPosition = new Point2D(currentPosition.getX()
-                + cloud.getSpeed(), currentPosition.getY());
+    public void updatePosition(Cloud cloud) {
+        Point2D newPosition = new Point2D(
+                cloud.getPosition().getX() + cloud.getSpeed(),
+                cloud.getPosition().getY());
         cloud.updatePositionTo(newPosition);
-        cloud.setTranslateX(cloud.getTranslateX() + cloud.getSpeed());
 
-        if (cloud.getPosition().getX() + cloud.getRadius() >= 0)
+        cloud.getTransforms().clear();
+        cloud.getTransforms().add(
+                new Translate(newPosition.getX(), newPosition.getY()));
+
+        if (cloud.getPosition().getX()
+                + (cloud.getWidth() / 2) > 0)
             cloud.changeState(new InPlayCloud());
     }
 
     @Override
-    public void seed(Cloud cloud, Circle cloudCircle) {
-
+    public void updateSaturationText(GameText saturationPercent) {
+        /* impossible */
     }
 
     @Override
-    public boolean rain(Cloud cloud, Circle cloudCircle) {
+    public void seed(BezierOval cloudShape) {
+        /* impossible */
+    }
+
+    @Override
+    public boolean rain(BezierOval cloudShape) {
+        /* impossible */
         return false;
     }
 }
 
 class InPlayCloud implements CloudState {
+    private double seedPercentage;
+
+    public InPlayCloud() {
+        seedPercentage = 0;
+    }
 
     @Override
-    public void update(Cloud cloud, Circle cloudCircle, Color fill,
-                       GameText percentSaturatedText, int seedPercentage) {
-        if (cloudCircle.getFill() != fill) {
-            cloudCircle.setFill(fill);
-            percentSaturatedText.setText(seedPercentage + "%");
-        }
-        Point2D currentPosition = cloud.getPosition();
-        Point2D newPosition = new Point2D(currentPosition.getX()
-                + cloud.getSpeed(), currentPosition.getY());
+    public void updatePosition(Cloud cloud) {
+        Point2D newPosition = new Point2D(
+                cloud.getPosition().getX() + cloud.getSpeed(),
+                cloud.getPosition().getY());
         cloud.updatePositionTo(newPosition);
-        cloud.setTranslateX(cloud.getTranslateX() + cloud.getSpeed());
 
-        if (cloud.getPosition().getX() - cloud.getRadius() > 800)
+        cloud.getTransforms().clear();
+        cloud.getTransforms().add(
+                new Translate(newPosition.getX(), newPosition.getY()));
+
+        if (cloud.getPosition().getX()
+                - (cloud.getWidth() / 2) > Game.GAME_WIDTH)
             cloud.changeState(new DeadCloud());
     }
 
     @Override
-    public void seed(Cloud cloud, Circle cloudCircle) {
-        if (cloud.getSeedPercentage() < 100)
-            cloud.incrementSeedPercentage();
+    public void updateSaturationText(GameText saturationPercent) {
+        saturationPercent.setText( ((int) seedPercentage) + "%");
     }
 
     @Override
-    public boolean rain(Cloud cloud, Circle cloudCircle) {
-        if (cloud.getSeedPercentage() >= 30) {
-            cloud.decrementSeedPercentage();
+    public void seed(BezierOval cloudShape) {
+        if (seedPercentage < 100)
+            incrementSeedPercentage(cloudShape);
+    }
+
+    private void incrementSeedPercentage(BezierOval cloudShape) {
+        seedPercentage++;
+        int red = (int) (255 * cloudShape.getFill().getRed());
+        int green =
+                (int) (255 * cloudShape.getFill().getGreen());
+        int blue = (int) (255 * cloudShape.getFill().getBlue());
+        cloudShape.setFill(Color.rgb(--red, --green, --blue));
+    }
+
+    @Override
+    public boolean rain(BezierOval cloudShape) {
+        if (seedPercentage >= 30) {
+            decrementSeedPercentage(cloudShape);
             return true;
         }
         return false;
     }
+
+    public void decrementSeedPercentage(BezierOval cloudShape) {
+        seedPercentage--;
+        int red = (int) (255 * cloudShape.getFill().getRed());
+        int green =
+                (int) (255 * cloudShape.getFill().getGreen());
+        int blue = (int) (255 * cloudShape.getFill().getBlue());
+        cloudShape.setFill(Color.rgb(++red, ++green, ++blue));
+    }
 }
 
 class DeadCloud implements CloudState {
-
     @Override
-    public void update(Cloud cloud, Circle cloudCircle, Color fill,
-                       GameText percentSaturatedText, int seedPercentage) {
-        /* should be deleted by now */
+    public void updatePosition(Cloud cloud) {
+        /* impossible */
     }
 
     @Override
-    public void seed(Cloud cloud, Circle cloudCircle) {
-
+    public void updateSaturationText(GameText saturationPercent) {
+        /* impossible */
     }
 
     @Override
-    public boolean rain(Cloud cloud, Circle cloudCircle) {
+    public void seed(BezierOval cloudShape) {
+        /* impossible */
+    }
+
+    @Override
+    public boolean rain(BezierOval cloudShape) {
+        /* impossible */
         return false;
     }
 }
