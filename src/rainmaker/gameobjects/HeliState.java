@@ -1,18 +1,17 @@
 package rainmaker.gameobjects;
 
-import audio.SoundPlayer;
 import javafx.geometry.Point2D;
 import javafx.scene.media.AudioClip;
 import javafx.scene.media.MediaPlayer;
+import javafx.scene.transform.Rotate;
+import javafx.scene.transform.Translate;
 import rainmaker.Game;
 
 public interface HeliState {
     HeliState toggleIgnition(HeliBlade heliBlade);
 
-    Point2D updatePosition(Point2D position, double heading, double speed,
-                   double fuel, HeliBlade heliBlade, Helicopter helicopter);
-
-    double consumeFuel(double currentFuel, double speed);
+    HeliState update(Helicopter helicopter, HeliBlade heliBlade,
+                 GameText fuelGauge);
 
     void increaseSpeed(Helicopter helicopter);
 
@@ -22,27 +21,32 @@ public interface HeliState {
 
     void turnRight(Helicopter helicopter);
 
+    void refuelBy(double fuel);
+
     void stopAudio();
+
+    double getFuel();
+
+    double getSpeed();
 }
 
 class OffHeliState implements HeliState {
+    private double fuel;
+
+    public OffHeliState(double fuel) {
+        this.fuel = fuel;
+    }
 
     @Override
     public HeliState toggleIgnition(HeliBlade heliBlade) {
         heliBlade.spinUp();
-        return new StartingHeliState();
+        return new StartingHeliState(fuel);
     }
 
     @Override
-    public Point2D updatePosition(Point2D position, double heading,
-                                  double speed, double fuel,
-                                  HeliBlade heliBlade, Helicopter helicopter) {
-        return null;
-    }
-
-    @Override
-    public double consumeFuel(double currentFuel, double speed) {
-        return currentFuel;
+    public HeliState update(Helicopter helicopter, HeliBlade heliBlade,
+                            GameText fuelGauge) {
+        return this;
     }
 
     @Override
@@ -58,43 +62,58 @@ class OffHeliState implements HeliState {
     public void turnRight(Helicopter helicopter) { /* impossible */ }
 
     @Override
+    public void refuelBy(double fuel) { /* impossible */ }
+
+    @Override
     public void stopAudio() { /* impossible */ }
+
+    @Override
+    public double getFuel() {
+        return fuel;
+    }
+
+    @Override
+    public double getSpeed() {
+        return 0;
+    }
 }
 
 class StartingHeliState implements HeliState {
-    private AudioClip helicopterAudio;
+    private double fuel;
+    private MediaPlayer helicopterStartup;
 
-    public StartingHeliState() {
+    public StartingHeliState(double fuel) {
+        this.fuel = fuel;
         configAndPlayAudio();
     }
 
     private void configAndPlayAudio() {
-        helicopterAudio = new AudioClip(
-                SoundPlayer.class.getResource(
-                                "../audio/helicopter-engine-startup.wav")
-                        .toExternalForm());
-        helicopterAudio.play();
+        helicopterStartup = new MediaPlayer(Game.HELICOPTER_STARTING_MEDIA);
+        helicopterStartup.setVolume(Game.HELICOPTER_VOLUME);
+        helicopterStartup.play();
     }
 
     @Override
     public HeliState toggleIgnition(HeliBlade heliBlade) {
         heliBlade.spinDown();
-        return new StoppingHeliState();
+        return new StoppingHeliState(fuel);
     }
 
     @Override
-    public Point2D updatePosition(Point2D position, double heading,
-                                  double speed, double fuel,
-                                  HeliBlade heliBlade, Helicopter helicopter) {
-        if (heliBlade.isUpToSpeed())
-            helicopter.changeState(new ReadyHeliState());
-        return null;
+    public HeliState update(Helicopter helicopter, HeliBlade heliBlade,
+                            GameText fuelGauge) {
+        updateFuelGaugeText(fuelGauge);
+        if (heliBlade.isUpToSpeed()) {
+            helicopterStartup.stop();
+            return new ReadyHeliState(fuel);
+        }
+        return this;
     }
 
-    @Override
-    public double consumeFuel(double currentFuel, double speed) {
-        double remainingFuel = currentFuel - Game.BASE_FUEL_CONSUMPTION_RATE;
-        return remainingFuel > 0 ? remainingFuel : 0;
+    private void updateFuelGaugeText(GameText fuelGauge) {
+        double remainingFuel = fuel - Game.BASE_FUEL_CONSUMPTION_RATE;
+        fuel = remainingFuel > 0 ? remainingFuel : 0;
+        fuelGauge.setText("F:" + (int) fuel);
     }
 
     @Override
@@ -110,15 +129,34 @@ class StartingHeliState implements HeliState {
     public void turnRight(Helicopter helicopter) { /* impossible */ }
 
     @Override
+    public void refuelBy(double fuel) { /* impossible */ }
+
+    @Override
     public void stopAudio() {
-        helicopterAudio.stop();
+        helicopterStartup.stop();
+    }
+
+    @Override
+    public double getFuel() {
+        return fuel;
+    }
+
+    @Override
+    public double getSpeed() {
+        return 0;
     }
 }
 
 class ReadyHeliState implements HeliState {
+    private double fuel;
+    private double heading;
+    private double speed;
     private MediaPlayer helicopterHum;
 
-    public ReadyHeliState() {
+    public ReadyHeliState(double fuel) {
+        this.fuel = fuel;
+        speed = 0;
+        heading = 0;
         configureAudio();
     }
 
@@ -134,91 +172,114 @@ class ReadyHeliState implements HeliState {
     public HeliState toggleIgnition(HeliBlade heliBlade) {
         heliBlade.spinDown();
         helicopterHum.stop();
-        return new StoppingHeliState();
+        return new StoppingHeliState(fuel);
     }
 
     @Override
-    public Point2D updatePosition(Point2D position, double heading,
-                                  double speed, double fuel,
-                                  HeliBlade heliBlade, Helicopter helicopter) {
-        return new Point2D(
-                position.getX() + (Math.sin(Math.toRadians(heading)) * speed),
-                position.getY() + (Math.cos(Math.toRadians(heading)) * speed));
+    public HeliState update(Helicopter helicopter, HeliBlade heliBlade,
+                            GameText fuelGauge) {
+        updatePosition(helicopter);
+        updateFuelGaugeText(fuelGauge);
+        return this;
     }
 
-    @Override
-    public double consumeFuel(double currentFuel, double speed) {
-        double remainingFuel = currentFuel
+    private void updatePosition(Helicopter helicopter) {
+        Point2D newPosition = new Point2D(
+                helicopter.getPosition().getX()
+                        + (Math.sin(Math.toRadians(heading)) * speed),
+                helicopter.getPosition().getY()
+                        + (Math.cos(Math.toRadians(heading)) * speed));
+        helicopter.updatePositionTo(newPosition);
+
+        helicopter.getTransforms().clear();
+        helicopter.getTransforms().addAll(
+                new Translate(helicopter.getPosition().getX(),
+                        helicopter.getPosition().getY()),
+                new Rotate(-heading));
+    }
+
+    private void updateFuelGaugeText(GameText fuelGauge) {
+        double remainingFuel = fuel
                 - (Math.abs(speed) + Game.BASE_FUEL_CONSUMPTION_RATE);
-        return remainingFuel > 0 ? remainingFuel : 0;
+        fuel = remainingFuel > 0 ? remainingFuel : 0;
+        fuelGauge.setText("F:" + (int) fuel);
     }
 
     @Override
     public void increaseSpeed(Helicopter helicopter) {
-        if (helicopter.getSpeed() < Game.HELICOPTER_MAX_SPEED)
-            helicopter.setSpeed(helicopter.getSpeed() + 0.1);
+        if (speed < Game.HELICOPTER_MAX_SPEED)
+            speed += Helicopter.SPEED_ADJUSTMENT;
     }
 
     @Override
     public void decreaseSpeed(Helicopter helicopter) {
-        if (helicopter.getSpeed() > Game.HELICOPTER_MIN_SPEED)
-            helicopter.setSpeed(helicopter.getSpeed() - 0.1);
+        if (speed > Game.HELICOPTER_MIN_SPEED)
+            speed -= Helicopter.SPEED_ADJUSTMENT;
     }
 
     @Override
     public void turnLeft(Helicopter helicopter) {
-        if (Math.abs(helicopter.getSpeed()) > 1e-3)
-            helicopter.setHeading(helicopter.getHeading() - 15);
+        if (Math.abs(speed) > Game.EFFECTIVELY_ZERO)
+            heading -= Helicopter.HEADING_ADJUSTMENT;
     }
 
     @Override
     public void turnRight(Helicopter helicopter) {
-        if (Math.abs(helicopter.getSpeed()) > 1e-3)
-            helicopter.setHeading(helicopter.getHeading() + 15);
+        if (Math.abs(speed) > Game.EFFECTIVELY_ZERO)
+            heading += Helicopter.HEADING_ADJUSTMENT;
+    }
+
+    @Override
+    public void refuelBy(double fuel) {
+        this.fuel += fuel;
     }
 
     @Override
     public void stopAudio() {
         helicopterHum.stop();
     }
+
+    @Override
+    public double getFuel() {
+        return fuel;
+    }
+
+    @Override
+    public double getSpeed() {
+        return speed;
+    }
 }
 
 class StoppingHeliState implements HeliState {
-    private AudioClip helicopterAudio;
+    private double fuel;
+    private MediaPlayer helicopterShutdown;
 
-    public StoppingHeliState() {
+    public StoppingHeliState(double fuel) {
+        this.fuel = fuel;
         configAndPlayAudio();
     }
 
     private void configAndPlayAudio() {
-        helicopterAudio = new AudioClip(
-                SoundPlayer.class.getResource(
-                                "../audio/helicopter-engine-shutdown.wav")
-                        .toExternalForm());
-        helicopterAudio.play();
+        helicopterShutdown = new MediaPlayer(Game.HELICOPTER_STOPPING_MEDIA);
+        helicopterShutdown.setVolume(Game.HELICOPTER_VOLUME);
+        helicopterShutdown.play();
     }
 
     @Override
     public HeliState toggleIgnition(HeliBlade heliBlade) {
         heliBlade.spinUp();
-        helicopterAudio.stop();
-        return new StartingHeliState();
+        helicopterShutdown.stop();
+        return new StartingHeliState(fuel);
     }
 
     @Override
-    public Point2D updatePosition(Point2D position, double heading,
-                                  double speed, double fuel,
-                                  HeliBlade heliBlade, Helicopter helicopter) {
+    public HeliState update(Helicopter helicopter, HeliBlade heliBlade,
+                            GameText fuelGauge) {
         if (!heliBlade.isRotating()) {
-            helicopterAudio.stop();
-            helicopter.changeState(new OffHeliState());
+            helicopterShutdown.stop();
+            return new OffHeliState(fuel);
         }
-        return null;
-    }
-
-    @Override
-    public double consumeFuel(double currentFuel, double speed) {
-        return currentFuel;
+        return this;
     }
 
     @Override
@@ -234,8 +295,20 @@ class StoppingHeliState implements HeliState {
     public void turnRight(Helicopter helicopter) { /* impossible */ }
 
     @Override
+    public void refuelBy(double fuel) { /* impossible */ }
+
+    @Override
     public void stopAudio() {
-        helicopterAudio.stop();
+        helicopterShutdown.stop();
+    }
+
+    @Override
+    public double getFuel() {
+        return fuel;
+    }
+
+    @Override
+    public double getSpeed() {
+        return 0;
     }
 }
-

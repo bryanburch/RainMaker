@@ -6,33 +6,28 @@ import javafx.scene.Group;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.text.FontWeight;
-import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Translate;
 import rainmaker.Game;
 
 public class Helicopter extends GameObject implements Updatable {
+    public static final Point2D FUEL_GAUGE_OFFSET =
+            new Point2D(-Game.HELIBODY_SIZE / 2, -25);
+    public static final double SPEED_ADJUSTMENT = 0.1;
+    public static final double HEADING_ADJUSTMENT = 15;
+
     private HeliBody heliBody;
     private HeliBlade heliBlade;
-    private HeliState state;
     private GameText fuelGauge;
-    private double heading;
-    private double speed;
-    private double fuel;
+    private HeliState state;
 
     public Helicopter(Point2D initialPosition, int fuel) {
         super(initialPosition);
         makeAndAddHelicopterShape();
-        makeFuelGauge(fuel);
-        this.getChildren().addAll(fuelGauge);
+        makeAndAddFuelGauge(fuel);
 
-        this.getTransforms().add(new Translate(initialPosition.getX(),
+        getTransforms().add(new Translate(initialPosition.getX(),
                 initialPosition.getY()));
-
-        this.heading = 0;
-        this.speed = 0;
-        this.fuel = fuel;
-
-        state = new OffHeliState();
+        state = new OffHeliState(fuel);
     }
 
     private void makeAndAddHelicopterShape() {
@@ -41,37 +36,21 @@ public class Helicopter extends GameObject implements Updatable {
         this.getChildren().addAll(heliBody, heliBlade);
     }
 
-    private void makeFuelGauge(int fuel) {
+    private void makeAndAddFuelGauge(int fuel) {
         fuelGauge = new GameText("F:" + fuel, Game.FUEL_GAUGE_COLOR,
                 FontWeight.BOLD);
-        fuelGauge.setTranslateY(-Game.HELIBODY_SIZE / 2);
-        fuelGauge.setTranslateX(-25);
-    }
-
-    @Override
-    public void update() {
-        Point2D newPosition = state.updatePosition(this.getPosition(),
-                heading, speed, fuel, heliBlade, this);
-
-        if (newPosition != null) {
-            this.updatePositionTo(newPosition);
-            this.getTransforms().clear();
-            this.getTransforms().addAll(
-                    new Translate(this.getPosition().getX(),
-                            this.getPosition().getY()),
-                    new Rotate(-heading));
-        }
-
-        fuel = state.consumeFuel(fuel, speed);
-        updateFuelGauge();
-    }
-
-    private void updateFuelGauge() {
-        fuelGauge.setText("F:" + (int) fuel);
+        fuelGauge.setTranslateY(FUEL_GAUGE_OFFSET.getX());
+        fuelGauge.setTranslateX(FUEL_GAUGE_OFFSET.getY());
+        getChildren().addAll(fuelGauge);
     }
 
     public void toggleIgnition() {
         state = state.toggleIgnition(heliBlade);
+    }
+
+    @Override
+    public void update() {
+        state = state.update(this, heliBlade, fuelGauge);
     }
 
     public void turnLeft() {
@@ -90,8 +69,12 @@ public class Helicopter extends GameObject implements Updatable {
         state.decreaseSpeed(this);
     }
 
+    public void refuelBy(double fuel) {
+        state.refuelBy(fuel);
+    }
+
     public boolean hasFuel() {
-        return fuel > 0;
+        return state.getFuel() > 0;
     }
 
     public boolean isEngineOff() {
@@ -99,46 +82,30 @@ public class Helicopter extends GameObject implements Updatable {
                 || state instanceof StoppingHeliState;
     }
 
-    public double getRemainingFuel() {
-        return fuel;
-    }
-
-    public void changeState(HeliState state) {
-        this.state = state;
-    }
-
-    public double getSpeed() {
-        return speed;
-    }
-
-    public void setSpeed(double speed) {
-        this.speed = speed;
-    }
-
-    public double getHeading() {
-        return heading;
-    }
-
-    public void setHeading(double heading) {
-        this.heading = heading;
-    }
-
-    // TODO: check if in rainmaker.OffHeliState instead of checking speed
     public boolean isStationary() {
-        return Math.abs(speed) < 1e-3;
-//        return state instanceof rainmaker.OffHeliState;
+        return Math.abs(state.getSpeed()) < Game.EFFECTIVELY_ZERO;
     }
 
-    public void refuelBy(double fuel) {
-        this.fuel += fuel;
+    public void stopAnimation() {
+        heliBlade.stopAnimation();
     }
 
     public void stopAudio() {
         state.stopAudio();
     }
+
+    public double getRemainingFuel() {
+        return state.getFuel();
+    }
+
+    public double getSpeed() {
+        return state.getSpeed();
+    }
 }
 
 class HeliBody extends Group {
+    public static final int IMAGE_ROTATION = 180;
+
     public HeliBody() {
         loadAndSetImage();
     }
@@ -155,13 +122,14 @@ class HeliBody extends Group {
     private void centerAboutOriginAndFlip() {
         this.setTranslateX(-Game.HELIBODY_SIZE / 2);
         this.setTranslateY(-Game.HELIBODY_SIZE / 2);
-        this.setRotate(180);
+        this.setRotate(IMAGE_ROTATION);
     }
 }
 
 class HeliBlade extends Group {
     private double rotationalSpeed;
     private boolean isSpinning;
+    private AnimationTimer animation;
 
     public HeliBlade() {
         loadAndSetImage();
@@ -169,7 +137,7 @@ class HeliBlade extends Group {
     }
 
     private void startAnimation() {
-        AnimationTimer loop = new AnimationTimer() {
+        animation = new AnimationTimer() {
 
             @Override
             public void handle(long now) {
@@ -187,7 +155,7 @@ class HeliBlade extends Group {
                             (rotationalSpeed - Game.ROTOR_ACCELERATION) : 0;
             }
         };
-        loop.start();
+        animation.start();
     }
 
     private void loadAndSetImage() {
@@ -196,12 +164,12 @@ class HeliBlade extends Group {
         image.setFitHeight(Game.ROTOR_LENGTH);
         image.setFitWidth(Game.ROTOR_LENGTH);
         centerAboutOrigin();
-        this.getChildren().add(image);
+        getChildren().add(image);
     }
 
     private void centerAboutOrigin() {
-        this.setTranslateX(-Game.ROTOR_LENGTH / 2);
-        this.setTranslateY(-Game.ROTOR_LENGTH / 2);
+        setTranslateX(-Game.ROTOR_LENGTH / 2);
+        setTranslateY(-Game.ROTOR_LENGTH / 2);
     }
 
     public void spinUp() {
@@ -217,6 +185,10 @@ class HeliBlade extends Group {
     }
 
     public boolean isRotating() {
-        return Math.abs(rotationalSpeed) > 1e-3;
+        return Math.abs(rotationalSpeed) > Game.EFFECTIVELY_ZERO;
+    }
+
+    public void stopAnimation() {
+        animation.stop();
     }
 }

@@ -97,9 +97,17 @@ public class Game extends Pane {
     public static final Color BOUND_STROKE = Color.YELLOW;
     public static final int BOUND_STROKE_WIDTH = 1;
 
+    public static final Media HELICOPTER_STARTING_MEDIA = new Media(
+            SoundPlayer.class.getResource(
+                            "../audio/helicopter-engine-startup.wav")
+                    .toExternalForm());
     public static final Media HELICOPTER_MEDIA = new Media(
             SoundPlayer.class.getResource(
                             "../audio/helicopter-engine-loop-long.wav")
+                    .toExternalForm());
+    public static final Media HELICOPTER_STOPPING_MEDIA = new Media(
+            SoundPlayer.class.getResource(
+                            "../audio/helicopter-engine-shutdown.wav")
                     .toExternalForm());
     public static final Media BLIMP_MEDIA = new Media(SoundPlayer.class
             .getResource("../audio/drone-engine.wav").toExternalForm());
@@ -121,6 +129,7 @@ public class Game extends Pane {
     public static final double NANOS_PER_SEC = 1e9;
     public static final int HUNDRED_PERCENT = 100;
     public static final int MAX_RGB_INT = 255;
+    public static final double EFFECTIVELY_ZERO = 1e-3;
 
     private static final Game instance = new Game();
 
@@ -430,6 +439,7 @@ public class Game extends Pane {
                     else if (result.get() == no)
                         Platform.exit();
                 });
+                stopAllAnimations();
                 stopAllAudio();
                 this.stop();
             }
@@ -574,8 +584,13 @@ public class Game extends Pane {
 
     public void handleRKeyPressed() {
         loop.stop();
+        stopAllAnimations();
         stopAllAudio();
         init();
+    }
+
+    private void stopAllAnimations() {
+        helicopter.stopAnimation();
     }
 
     private void stopAllAudio() {
