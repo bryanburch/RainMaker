@@ -5,12 +5,9 @@ import javafx.scene.media.AudioClip;
 import javafx.scene.media.MediaPlayer;
 import javafx.scene.transform.Translate;
 import rainmaker.Game;
-import rainmaker.gameobjects.GameText;
 
 public interface BlimpState {
-    void updatePosition(Blimp blimp);
-
-    void updateFuelText(GameText fuelText);
+    BlimpState update(Blimp blimp, GameText fuelText);
 
     double extractFuel();
 
@@ -25,7 +22,16 @@ class CreatedBlimp implements BlimpState {
     }
 
     @Override
-    public void updatePosition(Blimp blimp) {
+    public BlimpState update(Blimp blimp, GameText fuelText) {
+        updatePosition(blimp);
+
+        if (blimp.getPosition().getX()
+                + (Game.BLIMP_BODY_SIZE.getX() / 2) > 0)
+            return new InViewBlimp(fuel);
+        return this;
+    }
+
+    private void updatePosition(Blimp blimp) {
         Point2D newPosition = new Point2D(
                 blimp.getPosition().getX() + blimp.getSpeed(),
                 blimp.getPosition().getY());
@@ -34,14 +40,7 @@ class CreatedBlimp implements BlimpState {
         blimp.getTransforms().clear();
         blimp.getTransforms().add(
                 new Translate(newPosition.getX(), newPosition.getY()));
-
-        if (blimp.getPosition().getX()
-                + (Game.BLIMP_BODY_SIZE.getX() / 2) > 0)
-            blimp.changeState(new InViewBlimp(fuel));
     }
-
-    @Override
-    public void updateFuelText(GameText fuelText) { /* impossible */ }
 
     @Override
     public double extractFuel() {
@@ -67,7 +66,19 @@ class InViewBlimp implements BlimpState {
     }
 
     @Override
-    public void updatePosition(Blimp blimp) {
+    public BlimpState update(Blimp blimp, GameText fuelText) {
+        updatePosition(blimp);
+        updateFuelText(fuelText);
+
+        if (blimp.getPosition().getX()
+                - (Game.BLIMP_BODY_SIZE.getX() / 2) > Game.GAME_WIDTH) {
+            blimpAudio.stop();
+            return new DeadBlimp();
+        }
+        return this;
+    }
+
+    private void updatePosition(Blimp blimp) {
         Point2D newPosition = new Point2D(
                 blimp.getPosition().getX() + blimp.getSpeed(),
                 blimp.getPosition().getY());
@@ -76,16 +87,9 @@ class InViewBlimp implements BlimpState {
         blimp.getTransforms().clear();
         blimp.getTransforms().add(
                 new Translate(newPosition.getX(), newPosition.getY()));
-
-        if (blimp.getPosition().getX()
-                - (Game.BLIMP_BODY_SIZE.getX() / 2) > Game.GAME_WIDTH) {
-            blimpAudio.stop();
-            blimp.changeState(new DeadBlimp());
-        }
     }
 
-    @Override
-    public void updateFuelText(GameText fuelText) {
+    private void updateFuelText(GameText fuelText) {
         fuelText.setText(String.valueOf((int) fuel));
     }
 
@@ -107,11 +111,12 @@ class InViewBlimp implements BlimpState {
 }
 
 class DeadBlimp implements BlimpState {
-    @Override
-    public void updatePosition(Blimp blimp) { /* impossible */ }
 
     @Override
-    public void updateFuelText(GameText fuelText) { /* impossible */ }
+    public BlimpState update(Blimp blimp, GameText fuelText) {
+        /* impossible */
+        return this;
+    }
 
     @Override
     public double extractFuel() {

@@ -591,6 +591,7 @@ public class Game extends Pane {
 
     private void stopAllAnimations() {
         helicopter.stopAnimation();
+        blimps.stopAnimation();
     }
 
     private void stopAllAudio() {

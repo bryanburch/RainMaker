@@ -33,7 +33,8 @@ public class Blimp extends TransientGameObject implements Updatable {
         super(initialPosition, speed, speedOffset);
         buildShape();
         addFuelGauge(fuel);
-        this.getTransforms().add(new Translate(initialPosition.getX(),
+
+        getTransforms().add(new Translate(initialPosition.getX(),
                 initialPosition.getY()));
         state = new CreatedBlimp(fuel);
     }
@@ -49,7 +50,7 @@ public class Blimp extends TransientGameObject implements Updatable {
         fuelPane.getTransforms().add(
                 new Translate(-Game.BLIMP_TEXT_PANE_SIZE.getX() / 2,
                         -Game.BLIMP_TEXT_PANE_SIZE.getY() / 2));
-        this.getChildren().add(fuelPane);
+        getChildren().add(fuelPane);
     }
 
     private void buildShape() {
@@ -61,20 +62,19 @@ public class Blimp extends TransientGameObject implements Updatable {
 
     @Override
     public void update() {
-        state.updatePosition(this);
-        state.updateFuelText(fuelText);
+        state = state.update(this, fuelText);
     }
 
     public double extractFuel() {
         return state.extractFuel();
     }
 
-    public void changeState(BlimpState state) {
-        this.state = state;
-    }
-
     public boolean isDead() {
         return state instanceof DeadBlimp;
+    }
+
+    public void stopAnimation() {
+        blade.stopAnimation();
     }
 
     public void stopAudio() {
@@ -94,7 +94,7 @@ class BlimpBody extends Group {
         image.setFitHeight(Game.BLIMP_BODY_SIZE.getY());
         image.setFitWidth(Game.BLIMP_BODY_SIZE.getX());
         centerAboutOrigin(image);
-        this.getChildren().add(image);
+        getChildren().add(image);
     }
 
     private void centerAboutOrigin(ImageView image) {
@@ -107,6 +107,7 @@ class BlimpBody extends Group {
 
 class BlimpBlade extends Group {
     private double angle = 0;
+    private AnimationTimer animation;
 
     public BlimpBlade() {
         ImageView image = new ImageView(
@@ -114,7 +115,7 @@ class BlimpBlade extends Group {
         image.setFitHeight(Game.BLIMP_ROTOR_SIZE);
         image.setFitWidth(Game.BLIMP_ROTOR_SIZE);
         centerAboutOrigin(image);
-        this.getChildren().add(image);
+        getChildren().add(image);
         startAnimation();
     }
 
@@ -125,7 +126,7 @@ class BlimpBlade extends Group {
     }
 
     private void startAnimation() {
-        AnimationTimer loop = new AnimationTimer() {
+        animation = new AnimationTimer() {
             @Override
             public void handle(long now) {
                 angle += Game.BLIMP_ROTOR_SPEED;
@@ -137,6 +138,10 @@ class BlimpBlade extends Group {
                 );
             }
         };
-        loop.start();
+        animation.start();
+    }
+
+    public void stopAnimation() {
+        animation.stop();
     }
 }

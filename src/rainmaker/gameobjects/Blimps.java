@@ -1,8 +1,6 @@
 package rainmaker.gameobjects;
 
 import javafx.scene.layout.Pane;
-import rainmaker.gameobjects.DeadBlimp;
-import rainmaker.gameobjects.Updatable;
 
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -48,6 +46,11 @@ public class Blimps extends Pane implements Updatable, Iterable<Blimp> {
     @Override
     public Iterator<Blimp> iterator() {
         return blimps.iterator();
+    }
+
+    public void stopAnimation() {
+        for (Blimp b : blimps)
+            b.stopAnimation();
     }
 
     public void stopAudio() {
