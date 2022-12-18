@@ -5,15 +5,6 @@ import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
 import rainmaker.*;
 
-// TODO: "When the saturation reaches 30% the rainfall will start to fill the
-//  pond at a rate *proportional to the cloud’s saturation*."
-// TODO: "The cloud will *automatically lose saturation* when it’s not being
-//  seeded at a rate that allows the percentage to drop about 1%/second."
-// TODO: "So let's choose the Y coordinate randomly, but, such that it is
-//  within functional distance of at least one pond. I suggest rotating through
-//  the ponds such that the first new cloud is within Y-delta of the first pond,
-//  then the next new cloud is within Y-delta of the second pond, and so on.
-//  This will guarantee that you can eventually fill all of the ponds."
 public class Cloud extends TransientGameObject implements Updatable {
     private BezierOval cloudShape;
     private GameText percentSaturatedText;
@@ -29,8 +20,8 @@ public class Cloud extends TransientGameObject implements Updatable {
         seedPercentage = 0;
         makePercentSaturatedText(Game.CLOUD_TEXT_COLOR);
 
-        this.getChildren().addAll(cloudShape, percentSaturatedText);
-        state = new AliveCloud();
+        getChildren().addAll(cloudShape, percentSaturatedText);
+        state = new CreatedCloud();
     }
 
     private void makePercentSaturatedText(Color textFill) {
@@ -47,8 +38,8 @@ public class Cloud extends TransientGameObject implements Updatable {
 
     @Override
     public void update() {
-        state.updatePosition(this);
-        state.updateSaturationText(percentSaturatedText);
+        super.update();
+        state = state.update(this, percentSaturatedText);
     }
 
     public void seed() {
@@ -59,19 +50,15 @@ public class Cloud extends TransientGameObject implements Updatable {
         return state.tryToRain(cloudShape);
     }
 
-    public void changeState(CloudState state) {
-        this.state = state;
-    }
-
-    public double getWidth() {
-        return cloudShape.getWidth();
-    }
-
     public boolean isDead() {
         return state instanceof DeadCloud;
     }
 
     public void stopAudio() {
         state.stopAudio();
+    }
+
+    public double getWidth() {
+        return cloudShape.getWidth();
     }
 }

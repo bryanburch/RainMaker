@@ -62,6 +62,7 @@ public class Blimp extends TransientGameObject implements Updatable {
 
     @Override
     public void update() {
+        super.update();
         state = state.update(this, fuelText);
     }
 

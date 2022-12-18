@@ -1,19 +1,13 @@
 package rainmaker.gameobjects;
 
 import audio.SoundPlayer;
-import javafx.geometry.Point2D;
 import javafx.scene.media.AudioClip;
 import javafx.scene.media.MediaPlayer;
 import javafx.scene.paint.Color;
-import javafx.scene.transform.Translate;
 import rainmaker.Game;
-import rainmaker.gameobjects.BezierOval;
-import rainmaker.gameobjects.GameText;
 
 public interface CloudState {
-    void updatePosition(Cloud cloud);
-
-    void updateSaturationText(GameText saturationPercent);
+    CloudState update(Cloud cloud, GameText saturationPercent);
 
     void seed(BezierOval cloudShape);
 
@@ -23,26 +17,13 @@ public interface CloudState {
 
 }
 
-class AliveCloud implements CloudState {
+class CreatedCloud implements CloudState {
     @Override
-    public void updatePosition(Cloud cloud) {
-        Point2D newPosition = new Point2D(
-                cloud.getPosition().getX() + cloud.getSpeed(),
-                cloud.getPosition().getY());
-        cloud.updatePositionTo(newPosition);
-
-        cloud.getTransforms().clear();
-        cloud.getTransforms().add(
-                new Translate(newPosition.getX(), newPosition.getY()));
-
+    public CloudState update(Cloud cloud, GameText saturationPercent) {
         if (cloud.getPosition().getX()
                 + (cloud.getWidth() / 2) > 0)
-            cloud.changeState(new InPlayCloud());
-    }
-
-    @Override
-    public void updateSaturationText(GameText saturationPercent) {
-        /* impossible */
+            return new InViewCloud();
+        return this;
     }
 
     @Override
@@ -60,12 +41,12 @@ class AliveCloud implements CloudState {
     public void stopAudio() { /* impossible */ }
 }
 
-class InPlayCloud implements CloudState {
+class InViewCloud implements CloudState {
     private double seedPercentage;
     private MediaPlayer rainAudio;
     private AudioClip thunder;
 
-    public InPlayCloud() {
+    public InViewCloud() {
         seedPercentage = 0;
         configureAudio();
     }
@@ -81,25 +62,18 @@ class InPlayCloud implements CloudState {
     }
 
     @Override
-    public void updatePosition(Cloud cloud) {
-        Point2D newPosition = new Point2D(
-                cloud.getPosition().getX() + cloud.getSpeed(),
-                cloud.getPosition().getY());
-        cloud.updatePositionTo(newPosition);
-
-        cloud.getTransforms().clear();
-        cloud.getTransforms().add(
-                new Translate(newPosition.getX(), newPosition.getY()));
+    public CloudState update(Cloud cloud, GameText saturationPercent) {
+        updateSaturationText(saturationPercent);
 
         if (cloud.getPosition().getX()
                 - (cloud.getWidth() / 2) > Game.GAME_WIDTH) {
             rainAudio.stop();
-            cloud.changeState(new DeadCloud());
+            return new DeadCloud();
         }
+        return this;
     }
 
-    @Override
-    public void updateSaturationText(GameText saturationPercent) {
+    private void updateSaturationText(GameText saturationPercent) {
         saturationPercent.setText(((int) seedPercentage) + "%");
     }
 
@@ -153,11 +127,8 @@ class InPlayCloud implements CloudState {
 
 class DeadCloud implements CloudState {
     @Override
-    public void updatePosition(Cloud cloud) { /* impossible */ }
-
-    @Override
-    public void updateSaturationText(GameText saturationPercent) {
-        /* impossible */
+    public CloudState update(Cloud cloud, GameText saturationPercent) {
+        return this;
     }
 
     @Override

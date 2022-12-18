@@ -23,23 +23,10 @@ class CreatedBlimp implements BlimpState {
 
     @Override
     public BlimpState update(Blimp blimp, GameText fuelText) {
-        updatePosition(blimp);
-
         if (blimp.getPosition().getX()
                 + (Game.BLIMP_BODY_SIZE.getX() / 2) > 0)
             return new InViewBlimp(fuel);
         return this;
-    }
-
-    private void updatePosition(Blimp blimp) {
-        Point2D newPosition = new Point2D(
-                blimp.getPosition().getX() + blimp.getSpeed(),
-                blimp.getPosition().getY());
-        blimp.updatePositionTo(newPosition);
-
-        blimp.getTransforms().clear();
-        blimp.getTransforms().add(
-                new Translate(newPosition.getX(), newPosition.getY()));
     }
 
     @Override
@@ -67,7 +54,6 @@ class InViewBlimp implements BlimpState {
 
     @Override
     public BlimpState update(Blimp blimp, GameText fuelText) {
-        updatePosition(blimp);
         updateFuelText(fuelText);
 
         if (blimp.getPosition().getX()
@@ -76,17 +62,6 @@ class InViewBlimp implements BlimpState {
             return new DeadBlimp();
         }
         return this;
-    }
-
-    private void updatePosition(Blimp blimp) {
-        Point2D newPosition = new Point2D(
-                blimp.getPosition().getX() + blimp.getSpeed(),
-                blimp.getPosition().getY());
-        blimp.updatePositionTo(newPosition);
-
-        blimp.getTransforms().clear();
-        blimp.getTransforms().add(
-                new Translate(newPosition.getX(), newPosition.getY()));
     }
 
     private void updateFuelText(GameText fuelText) {
