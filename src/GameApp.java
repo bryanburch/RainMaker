@@ -11,6 +11,9 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
+import javafx.scene.media.AudioClip;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
 import javafx.scene.shape.*;
@@ -79,20 +82,23 @@ class Game extends Pane {
 
     public static final int MIN_CLOUDS = 3;
     public static final int MAX_CLOUDS = 5;
-    public static final Color CLOUD_COLOR = Color.WHITE;
+    public static final Color DEFAULT_CLOUD_COLOR = Color.WHITE;
     public static final Color CLOUD_STROKE_COLOR = Color.GREY;
     public static final Color CLOUD_TEXT_COLOR = Color.BLUE;
-    public static final int MIN_CLOUD_MINOR_RADIUS = 50;
+    public static final int MIN_CLOUD_MINOR_RADIUS = 40;
     public static final int MAX_CLOUD_MINOR_RADIUS = 60;
     public static final int MIN_CLOUD_MAJOR_RADIUS = 60;
-    public static final int MAX_CLOUD_MAJOR_RADIUS = 90;
+    public static final int MAX_CLOUD_MAJOR_RADIUS = 100;
     public static final double RAIN_FREQUENCY = 0.6;
+    public static final int MIN_CLOUD_SATURATION_TO_RAIN = 30;
+    public static final int MAX_RANGE_RAIN_MULTIPLIER = 4;
 
     public static final double MEAN_WIND_SPEED = 0.4;
     public static final double STD_DEV_WIND_SPEED = 0.15;
-    public static final int WIND_UPDATE_FREQ_SEC = 5;
+    public static final int WIND_UPDATE_FREQ_IN_SEC = 5;
     public static final double DISTANCE_LINE_WIDTH = 1;
     public static final Paint DISTANCE_LINE_COLOR = Color.WHITE;
+    public static final Paint DISTANCE_LINE_TEXT_COLOR = Color.BLACK;
 
     public static final Point2D HELIPAD_DIMENSIONS = new Point2D(100, 100);
     public static final Point2D HELIPAD_POSITION =
@@ -128,15 +134,39 @@ class Game extends Pane {
     public static final int ROTOR_MIN_SPEED = 0;
     public static final int ROTOR_MAX_SPEED = 15;
     public static final double ROTOR_ACCELERATION = 0.075;
-    public static final int HELICOPTER_START_FUEL = 25000;
-    public static final int FUEL_CONSUMPTION_RATE = 5;
+    public static final int STARTING_FUEL = 25000;
+    public static final int BASE_FUEL_CONSUMPTION_RATE = 5;
 
     public static final Color BOUND_FILL = Color.TRANSPARENT;
     public static final Color BOUND_STROKE = Color.YELLOW;
     public static final int BOUND_STROKE_WIDTH = 1;
 
-    public static final double NANOS_PER_SEC = 1e9;
+    public static final Media HELICOPTER_MEDIA = new Media(
+            Game.class.getResource(
+            "audio/helicopter-engine-loop-long.wav")
+                    .toExternalForm());
+    public static final Media BLIMP_MEDIA = new Media(Game.class.getResource(
+            "audio/drone-engine.wav").toExternalForm());
+    public static final Media WIND_MEDIA = new Media(Game.class.getResource(
+            "audio/wind-howl.mp3").toExternalForm());
+    public static final Media RAIN_MEDIA = new Media(Game.class.getResource(
+            "audio/rain-loop-long.wav").toExternalForm());
+    public static final double HELICOPTER_VOLUME = 1;
+    public static final double HELICOPTER_PLAYBACK_RATE = 1.15;
+    public static final double BLIMP_VOLUME = 0.1;
+    public static final double WIND_VOLUME = 0.1;
+    public static final double RAIN_VOLUME = 0.2;
+    public static final double SEEDING_VOLUME = 0.05;
+    public static final double REFUELING_VOLUME = 0.3;
+    public static final double THUNDER_VOLUME = 0.8;
+    public static final double THUNDER_CHANCE = 0.01;
 
+    public static final double NANOS_PER_SEC = 1e9;
+    public static final int HUNDRED_PERCENT = 100;
+    public static final int MAX_RGB_INT = 255;
+
+    private AudioClip seedingAudio;
+    private AudioClip refuelingAudio;
     private Ponds ponds;
     private Clouds clouds;
     private Blimps blimps;
@@ -145,7 +175,6 @@ class Game extends Pane {
     private Helicopter helicopter;
     private BoundsPane bounds;
     private DistanceLines distanceLines;
-
     private boolean isHelicopterTryingToSeed;
     private AnimationTimer loop;
 
@@ -159,32 +188,36 @@ class Game extends Pane {
                 randomInRange(lowerLeft.getY(), upperRight.getY()));
     }
 
+    public static boolean checkProbability(double probability) {
+        return Math.random() < probability;
+    }
+
     public Game() {
         /* image credit: https://earthobservatory.nasa.gov/images/51341/
         two-views-of-the-painted-desert */
         BackgroundImage background = new BackgroundImage(
-                new Image("desert_background_large.png"),
+                new Image("images/desert_background_large.png"),
                 BackgroundRepeat.REPEAT, BackgroundRepeat.NO_REPEAT,
                 BackgroundPosition.DEFAULT, BackgroundSize.DEFAULT);
-        this.setBackground(new Background(background));
-        this.setScaleY(-1);
+        setBackground(new Background(background));
+        setScaleY(-1);
         init();
     }
 
     private void init() {
         wind = new Wind();
 
-        this.getChildren().clear();
+        getChildren().clear();
         initPonds();
         initClouds();
         blimps = new Blimps();
-        this.helipad = makeHelipad();
-        this.helicopter = makeHelicopter();
+        helipad = makeHelipad();
+        configureSeedingAndRefuelingAudio();
+        helicopter = makeHelicopter();
         initBounds();
         initDistanceLines();
-        this.getChildren().addAll(helipad, ponds, clouds, blimps, helicopter,
-                bounds,
-                distanceLines);
+        getChildren().addAll(helipad, ponds, clouds, blimps, helicopter,
+                bounds, distanceLines);
 
         initWind();
         makeGameLoop();
@@ -233,8 +266,18 @@ class Game extends Pane {
     //  their own class (like the way blimp does it, see below)
     private static Helicopter makeHelicopter() {
         Helicopter helicopter = new Helicopter(HELIPAD_POSITION,
-                HELICOPTER_START_FUEL);
+                STARTING_FUEL);
         return helicopter;
+    }
+
+    private void configureSeedingAndRefuelingAudio() {
+        seedingAudio = new AudioClip(getClass().getResource(
+                "audio/rainmaker-seeding.wav").toExternalForm());
+        seedingAudio.setVolume(SEEDING_VOLUME);
+
+        refuelingAudio = new AudioClip(getClass().getResource(
+                "audio/helicopter-refueling.wav").toExternalForm());
+        refuelingAudio.setVolume(REFUELING_VOLUME);
     }
 
     private static Helipad makeHelipad() {
@@ -370,6 +413,8 @@ class Game extends Pane {
                     if (isRefuelingPossible(b)) {
                         double extractedFuel = b.extractFuel();
                         helicopter.refuelBy(extractedFuel);
+                        if (extractedFuel > 0 && !refuelingAudio.isPlaying())
+                            refuelingAudio.play();
                     }
             }
 
@@ -385,7 +430,7 @@ class Game extends Pane {
             }
 
             private void updateWind() {
-                if (timeSinceWindChange >= WIND_UPDATE_FREQ_SEC) {
+                if (timeSinceWindChange >= WIND_UPDATE_FREQ_IN_SEC) {
                     wind.update();
                     timeSinceWindChange = 0;
                 }
@@ -421,6 +466,7 @@ class Game extends Pane {
                     else if (result.get() == no)
                         Platform.exit();
                 });
+                stopAllAudio();
                 this.stop();
             }
 
@@ -441,7 +487,8 @@ class Game extends Pane {
                             + " points. Give it another go, pilot?");
                 alert.setTitle("Mission Success");
                 alert.setHeaderText(
-                        "You managed to restore the central valley!");
+                        "Congratulations! You single-handedly ended the " +
+                                "central valley's drought!");
 
                 ButtonType yesButton = new ButtonType("Yes");
                 ButtonType noButton = new ButtonType("No");
@@ -461,7 +508,7 @@ class Game extends Pane {
 
             private Alert makeLoseDialog() {
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                        "Try again?");
+                        "Gather your wits and try again, pilot?");
                 alert.setTitle("Mission Failure");
                 alert.setHeaderText(
                         "Despite your best efforts the drought still has a " +
@@ -487,21 +534,23 @@ class Game extends Pane {
                         if (p == null || c == null)
                             throw new IllegalStateException("Instance of " +
                                     "distance line not a pond, cloud pair");
-                        fillPondInProportionToCloudDistance(p, c, distanceLine);
+                        fillPondRelativeToCloudDistance(p, c, distanceLine);
                     }
                     timeSinceLastRain = 0;
                 }
             }
 
-            private void fillPondInProportionToCloudDistance(Pond p, Cloud c,
-                                                 DistanceLine distanceLine) {
-                double pondDiameter = 2 * p.getMaxRadius();
+            private void fillPondRelativeToCloudDistance(
+                    Pond pond, Cloud cloud, DistanceLine distanceLine) {
+                double pondDiameter = 2 * pond.getMaxRadius();
                 double pondCloudDistance = distanceLine.getDistance();
-                if (pondCloudDistance <= (4 * pondDiameter)) {
-                    boolean hasRained = c.rain();
-                    if (hasRained)
-                        p.fillByIncrement(1 -
-                                (pondCloudDistance / (4 * pondDiameter)));
+                if (pondCloudDistance <=
+                        (MAX_RANGE_RAIN_MULTIPLIER * pondDiameter)) {
+                    boolean hasRained = cloud.tryToRain();
+                    if (hasRained) {
+                        pond.fillByIncrement(1 - (pondCloudDistance
+                                / (MAX_RANGE_RAIN_MULTIPLIER * pondDiameter)));
+                    }
                 }
             }
 
@@ -512,7 +561,7 @@ class Game extends Pane {
                     if (helicopterBounds.collidesWith(cBound)
                             && isHelicopterTryingToSeed) {
                         c.seed();
-                        break;
+                        seedingAudio.play();
                     }
                 }
                 isHelicopterTryingToSeed = false;
@@ -561,7 +610,15 @@ class Game extends Pane {
 
     public void handleRKeyPressed() {
         loop.stop();
+        stopAllAudio();
         init();
+    }
+
+    private void stopAllAudio() {
+        wind.stopAudio();
+        helicopter.stopAudio();
+        blimps.stopAudio();
+        clouds.stopAudio();
     }
 
     public void handleBKeyPressed() {
@@ -620,15 +677,14 @@ class DistanceLines extends Pane implements Updatable, Iterable<DistanceLine> {
 }
 
 /**
- * Is a GameObject like Bound is. Postion defined as one end of the
- * DistanceLine, preferably stationary (i.e. Pond)
+ * Is a GameObject like Bound is. Postion defined as stationary endpoint of the
+ * DistanceLine (e.g. Pond).
  */
-// TODO:  shows the distance of the line *next to the line* (right now it's
-//  sitting on top of the line)
 class DistanceLine extends GameObject implements Updatable {
     private GameObject staticEndpoint, dynamicEndpoint;
     private Line line;
-    private GameText distance;
+    private GameText distanceText;
+    private StackPane textPane;
 
     public DistanceLine(GameObject staticEndpoint, GameObject dynamicEndpoint) {
         super(staticEndpoint.getPosition());
@@ -640,16 +696,17 @@ class DistanceLine extends GameObject implements Updatable {
     }
 
     private void setupDistanceText() {
-        distance = new GameText(String.valueOf((int) getDistance()),
-                Game.DISTANCE_LINE_COLOR);
-        setDistanceTextToMidpoint();
-        getChildren().add(distance);
+        distanceText = new GameText(String.valueOf((int) getDistance()),
+                Game.DISTANCE_LINE_TEXT_COLOR);
+        textPane = new StackPane(distanceText);
+        alignTextToMidpoint();
+        getChildren().add(textPane);
     }
 
-    private void setDistanceTextToMidpoint() {
+    private void alignTextToMidpoint() {
         Point2D midpoint = getMidpoint();
-        distance.setTranslateX(midpoint.getX());
-        distance.setTranslateY(midpoint.getY());
+        textPane.setTranslateX(midpoint.getX() - textPane.getWidth() / 2);
+        textPane.setTranslateY(midpoint.getY() - textPane.getHeight() / 2);
     }
 
     private void setupLineShape() {
@@ -672,8 +729,8 @@ class DistanceLine extends GameObject implements Updatable {
     }
 
     private void updateDistanceText() {
-        distance.setText(String.valueOf((int) getDistance()));
-        setDistanceTextToMidpoint();
+        distanceText.setText(String.valueOf((int) getDistance()));
+        alignTextToMidpoint();
     }
 
     private Point2D getMidpoint() {
@@ -944,7 +1001,7 @@ class BlimpBody extends Group {
 
     private void configureAndAddImage() {
         ImageView image = new ImageView(
-                new Image("blimp_transparent_trimmed.png"));
+                new Image("images/blimp_transparent_trimmed.png"));
         image.setFitHeight(Game.BLIMP_BODY_SIZE.getY());
         image.setFitWidth(Game.BLIMP_BODY_SIZE.getX());
         centerAboutOrigin(image);
@@ -964,7 +1021,7 @@ class BlimpBlade extends Group {
 
     public BlimpBlade() {
         ImageView image = new ImageView(
-                new Image("blimp_rotor_transparent.png"));
+                new Image("images/blimp_rotor_transparent.png"));
         image.setFitHeight(Game.BLIMP_ROTOR_SIZE);
         image.setFitWidth(Game.BLIMP_ROTOR_SIZE);
         centerAboutOrigin(image);
@@ -1059,6 +1116,10 @@ class Blimp extends TransientGameObject implements Updatable {
     public BlimpState getState() {
         return state;
     }
+
+    public void stopAudio() {
+        state.stopAudio();
+    }
 }
 
 interface BlimpState {
@@ -1067,6 +1128,8 @@ interface BlimpState {
     void updateFuelText(GameText fuelText);
 
     double extractFuel();
+
+    void stopAudio();
 }
 
 class CreatedBlimp implements BlimpState {
@@ -1093,9 +1156,7 @@ class CreatedBlimp implements BlimpState {
     }
 
     @Override
-    public void updateFuelText(GameText fuelText) {
-        /* impossible */
-    }
+    public void updateFuelText(GameText fuelText) { /* impossible */ }
 
     @Override
     public double extractFuel() {
@@ -1103,13 +1164,21 @@ class CreatedBlimp implements BlimpState {
         return 0;
     }
 
+    @Override
+    public void stopAudio() { /* impossible */ }
+
 }
 
 class InViewBlimp implements BlimpState {
     private double fuel;
+    private MediaPlayer blimpAudio;
 
     public InViewBlimp(double fuel) {
         this.fuel = fuel;
+        blimpAudio = new MediaPlayer(Game.BLIMP_MEDIA);
+        blimpAudio.setCycleCount(AudioClip.INDEFINITE);
+        blimpAudio.setVolume(Game.BLIMP_VOLUME);
+        blimpAudio.play();
     }
 
     @Override
@@ -1124,8 +1193,10 @@ class InViewBlimp implements BlimpState {
                 new Translate(newPosition.getX(), newPosition.getY()));
 
         if (blimp.getPosition().getX()
-                - (Game.BLIMP_BODY_SIZE.getX() / 2) > Game.GAME_WIDTH)
+                - (Game.BLIMP_BODY_SIZE.getX() / 2) > Game.GAME_WIDTH) {
+            blimpAudio.stop();
             blimp.changeState(new DeadBlimp());
+        }
     }
 
     @Override
@@ -1143,26 +1214,28 @@ class InViewBlimp implements BlimpState {
             fuel = 0;
             return remainder;
         }
+    }
 
+    public void stopAudio() {
+        blimpAudio.stop();
     }
 }
 
 class DeadBlimp implements BlimpState {
     @Override
-    public void updatePosition(Blimp blimp) {
-        /* impossible */
-    }
+    public void updatePosition(Blimp blimp) { /* impossible */ }
 
     @Override
-    public void updateFuelText(GameText fuelText) {
-        /* impossible */
-    }
+    public void updateFuelText(GameText fuelText) { /* impossible */ }
 
     @Override
     public double extractFuel() {
         /* impossible */
         return 0;
     }
+
+    @Override
+    public void stopAudio() { /* impossible */ }
 }
 
 class Blimps extends Pane implements Updatable, Iterable<Blimp> {
@@ -1206,10 +1279,15 @@ class Blimps extends Pane implements Updatable, Iterable<Blimp> {
     public Iterator<Blimp> iterator() {
         return blimps.iterator();
     }
+
+    public void stopAudio() {
+        for (Blimp b : blimps)
+            b.stopAudio();
+    }
 }
 
 class BezierOval extends Group {
-    public static final double CONTROL_POINT_STRENGTH = 1.3;
+    public static final double CONTROL_POINT_STRENGTH = 1.25;
 
     private double majorAxisRadius, minorAxisRadius;
     private List<Pair<Point2D, Double>> endpoints;
@@ -1244,12 +1322,12 @@ class BezierOval extends Group {
 
     private void setEndPoints() {
         endpoints = new LinkedList<>();
-        double theta = Game.randomInRange(50, 60);
-        while (theta <= 360) {
+        double theta = Game.randomInRange(35, 55);
+        while (theta <= Math.toDegrees(2 * Math.PI)) {
             endpoints.add(new Pair<>(new Point2D(
                 majorAxisRadius * Math.cos(Math.toRadians(theta)),
                 minorAxisRadius * Math.sin(Math.toRadians(theta))), theta));
-            theta += Game.randomInRange(50, 60);
+            theta += Game.randomInRange(35, 55);
         }
     }
 
@@ -1369,20 +1447,30 @@ class Pond extends GameObject implements Updatable {
     }
 }
 
+// TODO: remove observers isn't being called...
 class Wind implements Updatable {
     private double speed;
     private Random random;
     private List<TransientGameObject> observers;
+    private MediaPlayer windAmbience;
 
     public Wind() {
         this.speed = Game.MEAN_WIND_SPEED;
         random = new Random();
         observers = new LinkedList<>();
+        configureAndPlayAudio();
+    }
+
+    private void configureAndPlayAudio() {
+        windAmbience = new MediaPlayer(Game.WIND_MEDIA);
+        windAmbience.setCycleCount(AudioClip.INDEFINITE);
+        windAmbience.setVolume(Game.WIND_VOLUME);
+        windAmbience.play();
     }
 
     @Override
     public void update() {
-        /* nextGaussian use: https://stackoverflow.com/a/6012014 */
+        /* how to use nextGaussian(): https://stackoverflow.com/a/6012014 */
         speed = random.nextGaussian()
                 * Game.STD_DEV_WIND_SPEED + Game.MEAN_WIND_SPEED;
         notifyObservers();
@@ -1400,6 +1488,10 @@ class Wind implements Updatable {
         for (TransientGameObject t : observers) {
             t.impartSpeed(speed);
         }
+    }
+
+    public void stopAudio() {
+        windAmbience.stop();
     }
 }
 
@@ -1450,6 +1542,11 @@ class Clouds extends Pane implements Updatable, Iterable<Cloud> {
     public int getNumberOf() {
         return clouds.size();
     }
+
+    public void stopAudio() {
+        for (Cloud c : clouds)
+            c.stopAudio();
+    }
 }
 
 // TODO: "When the saturation reaches 30% the rainfall will start to fill the
@@ -1471,7 +1568,7 @@ class Cloud extends TransientGameObject implements Updatable {
                  double minorAxisRadius, double speed, double speedOffset) {
         super(initialPosition, speed, speedOffset);
         cloudShape = new BezierOval(majorAxisRadius, minorAxisRadius,
-                Game.CLOUD_COLOR, Game.CLOUD_STROKE_COLOR);
+                Game.DEFAULT_CLOUD_COLOR, Game.CLOUD_STROKE_COLOR);
 
         seedPercentage = 0;
         makePercentSaturatedText(Game.CLOUD_TEXT_COLOR);
@@ -1502,8 +1599,8 @@ class Cloud extends TransientGameObject implements Updatable {
         state.seed(cloudShape);
     }
 
-    public boolean rain() {
-        return state.rain(cloudShape);
+    public boolean tryToRain() {
+        return state.tryToRain(cloudShape);
     }
 
     public void changeState(CloudState state) {
@@ -1517,6 +1614,10 @@ class Cloud extends TransientGameObject implements Updatable {
     public CloudState getState() {
         return state;
     }
+
+    public void stopAudio() {
+        state.stopAudio();
+    }
 }
 
 interface CloudState {
@@ -1526,7 +1627,9 @@ interface CloudState {
 
     void seed(BezierOval cloudShape);
 
-    boolean rain(BezierOval cloudShape);
+    boolean tryToRain(BezierOval cloudShape);
+
+    void stopAudio();
 
 }
 
@@ -1558,17 +1661,33 @@ class AliveCloud implements CloudState {
     }
 
     @Override
-    public boolean rain(BezierOval cloudShape) {
+    public boolean tryToRain(BezierOval cloudShape) {
         /* impossible */
         return false;
     }
+
+    @Override
+    public void stopAudio() { /* impossible */ }
 }
 
 class InPlayCloud implements CloudState {
     private double seedPercentage;
+    private MediaPlayer rainAudio;
+    private AudioClip thunder;
 
     public InPlayCloud() {
         seedPercentage = 0;
+        configureAudio();
+    }
+
+    private void configureAudio() {
+        rainAudio = new MediaPlayer(Game.RAIN_MEDIA);
+        rainAudio.setCycleCount(AudioClip.INDEFINITE);
+        rainAudio.setVolume(Game.RAIN_VOLUME);
+
+        thunder = new AudioClip(getClass().getResource(
+                "audio/thunder-explosion.wav").toExternalForm());
+        thunder.setVolume(Game.THUNDER_VOLUME);
     }
 
     @Override
@@ -1583,8 +1702,10 @@ class InPlayCloud implements CloudState {
                 new Translate(newPosition.getX(), newPosition.getY()));
 
         if (cloud.getPosition().getX()
-                - (cloud.getWidth() / 2) > Game.GAME_WIDTH)
+                - (cloud.getWidth() / 2) > Game.GAME_WIDTH) {
+            rainAudio.stop();
             cloud.changeState(new DeadCloud());
+        }
     }
 
     @Override
@@ -1594,43 +1715,55 @@ class InPlayCloud implements CloudState {
 
     @Override
     public void seed(BezierOval cloudShape) {
-        if (seedPercentage < 100)
+        if (seedPercentage < Game.HUNDRED_PERCENT)
             incrementSeedPercentage(cloudShape);
     }
 
     private void incrementSeedPercentage(BezierOval cloudShape) {
         seedPercentage++;
-        int red = (int) (255 * cloudShape.getFill().getRed());
+        int red = (int) (Game.MAX_RGB_INT * cloudShape.getFill().getRed());
         int green =
-                (int) (255 * cloudShape.getFill().getGreen());
-        int blue = (int) (255 * cloudShape.getFill().getBlue());
+                (int) (Game.MAX_RGB_INT * cloudShape.getFill().getGreen());
+        int blue = (int) (Game.MAX_RGB_INT * cloudShape.getFill().getBlue());
         cloudShape.setFill(Color.rgb(--red, --green, --blue));
     }
 
     @Override
-    public boolean rain(BezierOval cloudShape) {
-        if (seedPercentage >= 30) {
+    public boolean tryToRain(BezierOval cloudShape) {
+        if (seedPercentage >= Game.MIN_CLOUD_SATURATION_TO_RAIN) {
             decrementSeedPercentage(cloudShape);
+            playAudio();
             return true;
         }
+        rainAudio.stop();
         return false;
+    }
+
+    private void playAudio() {
+        rainAudio.play();
+        if (Game.checkProbability(Game.THUNDER_CHANCE)
+                && !thunder.isPlaying())
+            thunder.play();
     }
 
     public void decrementSeedPercentage(BezierOval cloudShape) {
         seedPercentage--;
-        int red = (int) (255 * cloudShape.getFill().getRed());
+        int red = (int) (Game.MAX_RGB_INT * cloudShape.getFill().getRed());
         int green =
-                (int) (255 * cloudShape.getFill().getGreen());
-        int blue = (int) (255 * cloudShape.getFill().getBlue());
+                (int) (Game.MAX_RGB_INT * cloudShape.getFill().getGreen());
+        int blue = (int) (Game.MAX_RGB_INT * cloudShape.getFill().getBlue());
         cloudShape.setFill(Color.rgb(++red, ++green, ++blue));
+    }
+
+    @Override
+    public void stopAudio() {
+        rainAudio.stop();
     }
 }
 
 class DeadCloud implements CloudState {
     @Override
-    public void updatePosition(Cloud cloud) {
-        /* impossible */
-    }
+    public void updatePosition(Cloud cloud) { /* impossible */ }
 
     @Override
     public void updateSaturationText(GameText saturationPercent) {
@@ -1638,15 +1771,16 @@ class DeadCloud implements CloudState {
     }
 
     @Override
-    public void seed(BezierOval cloudShape) {
-        /* impossible */
-    }
+    public void seed(BezierOval cloudShape) { /* impossible */ }
 
     @Override
-    public boolean rain(BezierOval cloudShape) {
+    public boolean tryToRain(BezierOval cloudShape) {
         /* impossible */
         return false;
     }
+
+    @Override
+    public void stopAudio() { /* impossible */ }
 }
 
 /**
@@ -1664,7 +1798,7 @@ class Helipad extends GameObject {
     }
 
     private void loadAndSetupImage(Point2D dimensions) {
-        ImageView image = new ImageView(new Image("helipad_textured.png"));
+        ImageView image = new ImageView(new Image("images/helipad_textured.png"));
         image.setFitHeight(dimensions.getY());
         image.setFitWidth(dimensions.getX());
         centerAboutOrigin(dimensions, image);
@@ -1679,14 +1813,13 @@ class Helipad extends GameObject {
 }
 
 class Helicopter extends GameObject implements Updatable {
+    private HeliBody heliBody;
+    private HeliBlade heliBlade;
+    private HeliState state;
     private GameText fuelGauge;
     private double heading;
     private double speed;
     private double fuel;
-
-    private HeliBody heliBody;
-    private HeliBlade heliBlade;
-    private HeliState state;
 
     public Helicopter(Point2D initialPosition, int fuel) {
         super(initialPosition);
@@ -1801,6 +1934,10 @@ class Helicopter extends GameObject implements Updatable {
     public void refuelBy(double fuel) {
         this.fuel += fuel;
     }
+
+    public void stopAudio() {
+        state.stopAudio();
+    }
 }
 
 class HeliBody extends Group {
@@ -1810,7 +1947,7 @@ class HeliBody extends Group {
 
     private void loadAndSetImage() {
         ImageView image = new ImageView(
-                new Image("helibody_2x_transparent.png"));
+                new Image("images/helibody_2x_transparent.png"));
         image.setFitHeight(Game.HELIBODY_SIZE);
         image.setFitWidth(Game.HELIBODY_SIZE);
         centerAboutOriginAndFlip();
@@ -1857,7 +1994,7 @@ class HeliBlade extends Group {
 
     private void loadAndSetImage() {
         ImageView image = new ImageView(
-                new Image("heliblade_2wing_transparent.png"));
+                new Image("images/heliblade_2wing_transparent.png"));
         image.setFitHeight(Game.ROTOR_LENGTH);
         image.setFitWidth(Game.ROTOR_LENGTH);
         centerAboutOrigin();
@@ -1901,6 +2038,8 @@ interface HeliState {
     void turnLeft(Helicopter helicopter);
 
     void turnRight(Helicopter helicopter);
+
+    void stopAudio();
 }
 
 class OffHeliState implements HeliState {
@@ -1933,9 +2072,25 @@ class OffHeliState implements HeliState {
 
     @Override
     public void turnRight(Helicopter helicopter) { /* impossible */ }
+
+    @Override
+    public void stopAudio() { /* impossible */ }
 }
 
 class StartingHeliState implements HeliState {
+    private AudioClip helicopterAudio;
+
+    public StartingHeliState() {
+        configAndPlayAudio();
+    }
+
+    private void configAndPlayAudio() {
+        helicopterAudio = new AudioClip(
+                getClass().getResource(
+                        "audio/helicopter-engine-startup.wav")
+                        .toExternalForm());
+        helicopterAudio.play();
+    }
 
     @Override
     public HeliState toggleIgnition(HeliBlade heliBlade) {
@@ -1953,7 +2108,7 @@ class StartingHeliState implements HeliState {
 
     @Override
     public double consumeFuel(double currentFuel, double speed) {
-        double remainingFuel = currentFuel - Game.FUEL_CONSUMPTION_RATE;
+        double remainingFuel = currentFuel - Game.BASE_FUEL_CONSUMPTION_RATE;
         return remainingFuel > 0 ? remainingFuel : 0;
     }
 
@@ -1968,13 +2123,32 @@ class StartingHeliState implements HeliState {
 
     @Override
     public void turnRight(Helicopter helicopter) { /* impossible */ }
+
+    @Override
+    public void stopAudio() {
+        helicopterAudio.stop();
+    }
 }
 
 class StoppingHeliState implements HeliState {
+    private AudioClip helicopterAudio;
+
+    public StoppingHeliState() {
+        configAndPlayAudio();
+    }
+
+    private void configAndPlayAudio() {
+        helicopterAudio = new AudioClip(
+                getClass().getResource(
+                                "audio/helicopter-engine-shutdown.wav")
+                        .toExternalForm());
+        helicopterAudio.play();
+    }
 
     @Override
     public HeliState toggleIgnition(HeliBlade heliBlade) {
         heliBlade.spinUp();
+        helicopterAudio.stop();
         return new StartingHeliState();
     }
 
@@ -1982,6 +2156,7 @@ class StoppingHeliState implements HeliState {
     public Point2D updatePosition(Point2D position, double heading,
       double speed, double fuel, HeliBlade heliBlade, Helicopter helicopter) {
         if (!heliBlade.isRotating()) {
+            helicopterAudio.stop();
             helicopter.changeState(new OffHeliState());
         }
         return null;
@@ -2003,13 +2178,32 @@ class StoppingHeliState implements HeliState {
 
     @Override
     public void turnRight(Helicopter helicopter) { /* impossible */ }
+
+    @Override
+    public void stopAudio() {
+        helicopterAudio.stop();
+    }
 }
 
 class ReadyHeliState implements HeliState {
+    private MediaPlayer helicopterHum;
+
+    public ReadyHeliState() {
+        configureAudio();
+    }
+
+    private void configureAudio() {
+        helicopterHum = new MediaPlayer(Game.HELICOPTER_MEDIA);
+        helicopterHum.setCycleCount(AudioClip.INDEFINITE);
+        helicopterHum.setVolume(Game.HELICOPTER_VOLUME);
+        helicopterHum.setRate(Game.HELICOPTER_PLAYBACK_RATE);
+        helicopterHum.play();
+    }
 
     @Override
     public HeliState toggleIgnition(HeliBlade heliBlade) {
         heliBlade.spinDown();
+        helicopterHum.stop();
         return new StoppingHeliState();
     }
 
@@ -2024,7 +2218,7 @@ class ReadyHeliState implements HeliState {
     @Override
     public double consumeFuel(double currentFuel, double speed) {
         double remainingFuel =
-                currentFuel - (Math.abs(speed) + Game.FUEL_CONSUMPTION_RATE);
+                currentFuel - (Math.abs(speed) + Game.BASE_FUEL_CONSUMPTION_RATE);
         return remainingFuel > 0 ? remainingFuel : 0;
     }
 
@@ -2050,6 +2244,11 @@ class ReadyHeliState implements HeliState {
     public void turnRight(Helicopter helicopter) {
         if (Math.abs(helicopter.getSpeed()) > 1e-3)
             helicopter.setHeading(helicopter.getHeading() + 15);
+    }
+
+    @Override
+    public void stopAudio() {
+        helicopterHum.stop();
     }
 }
 
