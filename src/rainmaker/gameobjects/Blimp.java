@@ -7,12 +7,16 @@ import javafx.scene.Group;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
 import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Scale;
 import javafx.scene.transform.Translate;
 import rainmaker.*;
 
 public class Blimp extends TransientGameObject implements Updatable {
+    public static final int BLIMP_TEXT_FONT_SIZE = 16;
+    public static final Color BLIMP_FUEL_TEXT_COLOR = Color.rgb(44, 235, 242);
+
     private BlimpBody body;
     private BlimpBlade blade;
     private GameText fuelText;
@@ -41,22 +45,23 @@ public class Blimp extends TransientGameObject implements Updatable {
 
     private void addFuelGauge(double fuel) {
         fuelText = new GameText(String.valueOf((int) fuel),
-                Game.BLIMP_FUEL_TEXT_COLOR);
-        fuelText.setSize(Game.BLIMP_TEXT_FONT_SIZE);
+                BLIMP_FUEL_TEXT_COLOR);
+        fuelText.setSize(BLIMP_TEXT_FONT_SIZE);
         StackPane fuelPane = new StackPane(fuelText);
         fuelPane.setAlignment(Pos.CENTER);
-        fuelPane.setPrefSize(Game.BLIMP_TEXT_PANE_SIZE.getX(),
-                Game.BLIMP_TEXT_PANE_SIZE.getY());
+        fuelPane.setPrefSize(BlimpBody.BLIMP_TEXT_PANE_SIZE.getX(),
+                BlimpBody.BLIMP_TEXT_PANE_SIZE.getY());
         fuelPane.getTransforms().add(
-                new Translate(-Game.BLIMP_TEXT_PANE_SIZE.getX() / 2,
-                        -Game.BLIMP_TEXT_PANE_SIZE.getY() / 2));
+                new Translate(-BlimpBody.BLIMP_TEXT_PANE_SIZE.getX() / 2,
+                        -BlimpBody.BLIMP_TEXT_PANE_SIZE.getY() / 2));
         getChildren().add(fuelPane);
     }
 
     private void buildShape() {
         body = new BlimpBody();
         blade = new BlimpBlade();
-        blade.getTransforms().add(new Translate(Game.BLIMP_BLADE_XOFFSET, 0));
+        blade.getTransforms().add(new Translate(
+                BlimpBlade.BLIMP_BLADE_XOFFSET, 0));
         this.getChildren().addAll(body, blade);
     }
 
@@ -84,6 +89,10 @@ public class Blimp extends TransientGameObject implements Updatable {
 }
 
 class BlimpBody extends Group {
+    public static final Point2D BLIMP_BODY_SIZE = new Point2D(200, 68);
+    public static final Point2D BLIMP_TEXT_PANE_SIZE =
+            new Point2D(BLIMP_BODY_SIZE.getX() / 2,
+                    BLIMP_BODY_SIZE.getY() / 2);
 
     public BlimpBody() {
         configureAndAddImage();
@@ -92,29 +101,34 @@ class BlimpBody extends Group {
     private void configureAndAddImage() {
         ImageView image = new ImageView(
                 new Image("images/blimp_transparent_trimmed.png"));
-        image.setFitHeight(Game.BLIMP_BODY_SIZE.getY());
-        image.setFitWidth(Game.BLIMP_BODY_SIZE.getX());
+        image.setFitHeight(BLIMP_BODY_SIZE.getY());
+        image.setFitWidth(BLIMP_BODY_SIZE.getX());
         centerAboutOrigin(image);
         getChildren().add(image);
     }
 
     private void centerAboutOrigin(ImageView image) {
         image.getTransforms().add(
-                new Translate(-Game.BLIMP_BODY_SIZE.getX() / 2,
-                        -Game.BLIMP_BODY_SIZE.getY() / 2)
+                new Translate(-BLIMP_BODY_SIZE.getX() / 2,
+                        -BLIMP_BODY_SIZE.getY() / 2)
         );
     }
 }
 
 class BlimpBlade extends Group {
+    public static final double BLIMP_ROTOR_SPEED = 7.5;
+    public static final double BLIMP_ROTOR_XSCALE_FACTOR = 0.25;
+    public static final int BLIMP_BLADE_XOFFSET = -90;
+    public static final int BLIMP_ROTOR_SIZE = 70;
+
     private double angle = 0;
     private AnimationTimer animation;
 
     public BlimpBlade() {
         ImageView image = new ImageView(
                 new Image("images/blimp_rotor_transparent.png"));
-        image.setFitHeight(Game.BLIMP_ROTOR_SIZE);
-        image.setFitWidth(Game.BLIMP_ROTOR_SIZE);
+        image.setFitHeight(BLIMP_ROTOR_SIZE);
+        image.setFitWidth(BLIMP_ROTOR_SIZE);
         centerAboutOrigin(image);
         getChildren().add(image);
         startAnimation();
@@ -122,19 +136,19 @@ class BlimpBlade extends Group {
 
     private void centerAboutOrigin(ImageView image) {
         image.getTransforms().add(
-                new Translate(-Game.BLIMP_ROTOR_SIZE / 2,
-                        -Game.BLIMP_ROTOR_SIZE / 2));
+                new Translate(-BLIMP_ROTOR_SIZE / 2,
+                        -BLIMP_ROTOR_SIZE / 2));
     }
 
     private void startAnimation() {
         animation = new AnimationTimer() {
             @Override
             public void handle(long now) {
-                angle += Game.BLIMP_ROTOR_SPEED;
+                angle += BLIMP_ROTOR_SPEED;
                 getTransforms().clear();
                 getTransforms().addAll(
-                        new Translate(Game.BLIMP_BLADE_XOFFSET, 0),
-                        new Scale(Game.BLIMP_ROTOR_XSCALE_FACTOR, 1),
+                        new Translate(BLIMP_BLADE_XOFFSET, 0),
+                        new Scale(BLIMP_ROTOR_XSCALE_FACTOR, 1),
                         new Rotate(angle)
                 );
             }

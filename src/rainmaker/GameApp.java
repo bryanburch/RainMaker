@@ -6,7 +6,7 @@ import javafx.stage.Stage;
 import rainmaker.gameobjects.*;
 
 /**
- * Sets up key event handlers that invoke rainmaker.gameobjects.Game class methods.
+ * Sets up key event handlers that invoke Game class methods.
  */
 public class GameApp extends Application {
     private Game game;
@@ -43,4 +43,3 @@ public class GameApp extends Application {
         });
     }
 }
-

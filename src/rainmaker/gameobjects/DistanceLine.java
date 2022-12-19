@@ -2,21 +2,25 @@ package rainmaker.gameobjects;
 
 import javafx.geometry.Point2D;
 import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
+import javafx.scene.paint.Paint;
 import javafx.scene.shape.Line;
-import rainmaker.Game;
-import rainmaker.gameobjects.GameText;
 
 /**
- * Is a rainmaker.gameobjects.GameObject like rainmaker.gameobjects.Bound is. Postion defined as stationary endpoint of the
- * rainmaker.DistanceLine (e.g. rainmaker.gameobjects.Pond).
+ * Is a GameObject like Bound is. Postion defined as stationary endpoint of the
+ * DistanceLine (e.g. Pond).
  */
 public class DistanceLine extends GameObject implements Updatable {
+    public static final double DISTANCE_LINE_WIDTH = 1;
+    public static final Paint DISTANCE_LINE_COLOR = Color.WHITE;
+    public static final Paint DISTANCE_LINE_TEXT_COLOR = Color.BLACK;
     private GameObject staticEndpoint, dynamicEndpoint;
     private Line line;
     private GameText distanceText;
     private StackPane textPane;
 
-    public DistanceLine(GameObject staticEndpoint, GameObject dynamicEndpoint) {
+    public DistanceLine(GameObject staticEndpoint,
+                        GameObject dynamicEndpoint) {
         super(staticEndpoint.getPosition());
         this.staticEndpoint = staticEndpoint;
         this.dynamicEndpoint = dynamicEndpoint;
@@ -27,7 +31,7 @@ public class DistanceLine extends GameObject implements Updatable {
 
     private void setupDistanceText() {
         distanceText = new GameText(String.valueOf((int) getDistance()),
-                Game.DISTANCE_LINE_TEXT_COLOR);
+                DISTANCE_LINE_TEXT_COLOR);
         textPane = new StackPane(distanceText);
         alignTextToMidpoint();
         getChildren().add(textPane);
@@ -44,8 +48,8 @@ public class DistanceLine extends GameObject implements Updatable {
                 staticEndpoint.getPosition().getY(),
                 dynamicEndpoint.getPosition().getX(),
                 dynamicEndpoint.getPosition().getY());
-        line.setStrokeWidth(Game.DISTANCE_LINE_WIDTH);
-        line.setStroke(Game.DISTANCE_LINE_COLOR);
+        line.setStrokeWidth(DISTANCE_LINE_WIDTH);
+        line.setStroke(DISTANCE_LINE_COLOR);
         getChildren().add(line);
     }
 

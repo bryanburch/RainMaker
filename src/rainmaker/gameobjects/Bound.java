@@ -1,14 +1,17 @@
 package rainmaker.gameobjects;
 
 import javafx.geometry.Point2D;
+import javafx.scene.paint.Color;
 import javafx.scene.shape.Shape;
-import rainmaker.Game;
 
 /**
  * Holds a reference to the object it's bounding so that it can be garbage
  * collected along with its object.
  */
 public class Bound extends GameObject implements Updatable {
+    public static final Color BOUND_FILL = Color.TRANSPARENT;
+    public static final Color BOUND_STROKE = Color.YELLOW;
+    public static final int BOUND_STROKE_WIDTH = 1;
     private GameObject boundedObject;
     private Shape boundShape;
 
@@ -23,9 +26,9 @@ public class Bound extends GameObject implements Updatable {
 
     private void setBoundShapeDefaultProperties(Shape boundShape) {
         this.boundShape = boundShape;
-        boundShape.setFill(Game.BOUND_FILL);
-        boundShape.setStroke(Game.BOUND_STROKE);
-        boundShape.setStrokeWidth(Game.BOUND_STROKE_WIDTH);
+        boundShape.setFill(BOUND_FILL);
+        boundShape.setStroke(BOUND_STROKE);
+        boundShape.setStrokeWidth(BOUND_STROKE_WIDTH);
         this.getChildren().add(this.boundShape);
     }
 

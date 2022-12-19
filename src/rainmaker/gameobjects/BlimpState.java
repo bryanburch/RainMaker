@@ -22,7 +22,7 @@ class CreatedBlimp implements BlimpState {
     @Override
     public BlimpState update(Blimp blimp, GameText fuelText) {
         if (blimp.getPosition().getX()
-                + (Game.BLIMP_BODY_SIZE.getX() / 2) > 0)
+                + (BlimpBody.BLIMP_BODY_SIZE.getX() / 2) > 0)
             return new InViewBlimp(fuel);
         return this;
     }
@@ -55,7 +55,7 @@ class InViewBlimp implements BlimpState {
         updateFuelText(fuelText);
 
         if (blimp.getPosition().getX()
-                - (Game.BLIMP_BODY_SIZE.getX() / 2) > Game.GAME_WIDTH) {
+                - (BlimpBody.BLIMP_BODY_SIZE.getX() / 2) > Game.GAME_WIDTH) {
             blimpAudio.stop();
             return new DeadBlimp();
         }

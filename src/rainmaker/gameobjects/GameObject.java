@@ -11,8 +11,8 @@ import javafx.scene.Group;
  * respectively. Standardizing the position attribute of all GameObjects like
  * this makes it consistent and simplifies distance calculations between
  * GameObjects.
- * Additionally, rainmaker.GameObject does not implement rainmaker.Updatable because it cannot be
- * assumed that all inheritors will have an updatable quality (e.g. rainmaker.Helipad).
+ * Additionally, GameObject does not implement Updatable because it cannot be
+ * assumed that all inheritors will have an updatable quality (e.g. Helipad).
  */
 public abstract class GameObject extends Group {
     private Point2D position;

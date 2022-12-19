@@ -3,9 +3,11 @@ package rainmaker.gameobjects;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
-import rainmaker.*;
 
 public class Cloud extends TransientGameObject implements Updatable {
+    public static final Color DEFAULT_CLOUD_COLOR = Color.WHITE;
+    public static final Color CLOUD_STROKE_COLOR = Color.GREY;
+    public static final Color CLOUD_TEXT_COLOR = Color.BLUE;
     private BezierOval cloudShape;
     private GameText percentSaturatedText;
     private int seedPercentage;
@@ -15,10 +17,10 @@ public class Cloud extends TransientGameObject implements Updatable {
                  double minorAxisRadius, double speed, double speedOffset) {
         super(initialPosition, speed, speedOffset);
         cloudShape = new BezierOval(majorAxisRadius, minorAxisRadius,
-                Game.DEFAULT_CLOUD_COLOR, Game.CLOUD_STROKE_COLOR);
+                DEFAULT_CLOUD_COLOR, CLOUD_STROKE_COLOR);
 
         seedPercentage = 0;
-        makePercentSaturatedText(Game.CLOUD_TEXT_COLOR);
+        makePercentSaturatedText(CLOUD_TEXT_COLOR);
 
         getChildren().addAll(cloudShape, percentSaturatedText);
         state = new CreatedCloud();

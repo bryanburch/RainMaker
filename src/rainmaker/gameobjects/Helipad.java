@@ -10,18 +10,23 @@ import rainmaker.Game;
  * The starting/ending location for helicopter. Represented as an image.
  */
 public class Helipad extends GameObject {
+    public static final Point2D HELIPAD_DIMENSIONS = new Point2D(100, 100);
+    public static final Point2D HELIPAD_POSITION =
+            new Point2D((Game.GAME_WIDTH / 2),
+                    (Game.GAME_HEIGHT / 25) + (HELIPAD_DIMENSIONS.getY() / 2));
 
     public Helipad(Point2D initialPosition, Point2D dimensions) {
         super(initialPosition);
 
         loadAndSetupImage(dimensions);
 
-        this.getTransforms().add(new Translate(Game.HELIPAD_POSITION.getX(),
-                Game.HELIPAD_POSITION.getY()));
+        this.getTransforms().add(new Translate(HELIPAD_POSITION.getX(),
+                HELIPAD_POSITION.getY()));
     }
 
     private void loadAndSetupImage(Point2D dimensions) {
-        ImageView image = new ImageView(new Image("images/helipad_textured.png"));
+        ImageView image = new ImageView(
+                new Image("images/helipad_textured.png"));
         image.setFitHeight(dimensions.getY());
         image.setFitWidth(dimensions.getX());
         centerAboutOrigin(dimensions, image);

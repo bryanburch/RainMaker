@@ -5,15 +5,19 @@ import javafx.geometry.Point2D;
 import javafx.scene.Group;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.paint.Color;
 import javafx.scene.text.FontWeight;
 import javafx.scene.transform.Translate;
 import rainmaker.Game;
 
 public class Helicopter extends GameObject implements Updatable {
+    public static final int HELIBODY_SIZE = 75;
     public static final Point2D FUEL_GAUGE_OFFSET =
-            new Point2D(-Game.HELIBODY_SIZE / 2, -25);
+            new Point2D(-HELIBODY_SIZE / 2, -25);
     public static final double SPEED_ADJUSTMENT = 0.1;
     public static final double HEADING_ADJUSTMENT = 15;
+    public static final int ROTOR_LENGTH = 80;
+    public static final Color FUEL_GAUGE_COLOR = Color.MAROON;
 
     private HeliBody heliBody;
     private HeliBlade heliBlade;
@@ -37,7 +41,7 @@ public class Helicopter extends GameObject implements Updatable {
     }
 
     private void makeAndAddFuelGauge(int fuel) {
-        fuelGauge = new GameText("F:" + fuel, Game.FUEL_GAUGE_COLOR,
+        fuelGauge = new GameText("F:" + fuel, FUEL_GAUGE_COLOR,
                 FontWeight.BOLD);
         fuelGauge.setTranslateY(FUEL_GAUGE_OFFSET.getX());
         fuelGauge.setTranslateX(FUEL_GAUGE_OFFSET.getY());
@@ -113,20 +117,23 @@ class HeliBody extends Group {
     private void loadAndSetImage() {
         ImageView image = new ImageView(
                 new Image("images/helibody_2x_transparent.png"));
-        image.setFitHeight(Game.HELIBODY_SIZE);
-        image.setFitWidth(Game.HELIBODY_SIZE);
+        image.setFitHeight(Helicopter.HELIBODY_SIZE);
+        image.setFitWidth(Helicopter.HELIBODY_SIZE);
         centerAboutOriginAndFlip();
         this.getChildren().add(image);
     }
 
     private void centerAboutOriginAndFlip() {
-        this.setTranslateX(-Game.HELIBODY_SIZE / 2);
-        this.setTranslateY(-Game.HELIBODY_SIZE / 2);
+        this.setTranslateX(-Helicopter.HELIBODY_SIZE / 2);
+        this.setTranslateY(-Helicopter.HELIBODY_SIZE / 2);
         this.setRotate(IMAGE_ROTATION);
     }
 }
 
 class HeliBlade extends Group {
+    public static final double ROTOR_ACCELERATION = 0.075;
+    public static final int ROTOR_MAX_SPEED = 15;
+    public static final int ROTOR_MIN_SPEED = 0;
     private double rotationalSpeed;
     private boolean isSpinning;
     private AnimationTimer animation;
@@ -147,12 +154,12 @@ class HeliBlade extends Group {
             }
 
             private void determineAndUpdateSpeed() {
-                if (isSpinning && rotationalSpeed < Game.ROTOR_MAX_SPEED)
-                    rotationalSpeed += Game.ROTOR_ACCELERATION;
-                else if (!isSpinning && rotationalSpeed > Game.ROTOR_MIN_SPEED)
+                if (isSpinning && rotationalSpeed < ROTOR_MAX_SPEED)
+                    rotationalSpeed += ROTOR_ACCELERATION;
+                else if (!isSpinning && rotationalSpeed > ROTOR_MIN_SPEED)
                     rotationalSpeed =
-                        (rotationalSpeed - Game.ROTOR_ACCELERATION >= 0) ?
-                            (rotationalSpeed - Game.ROTOR_ACCELERATION) : 0;
+                        (rotationalSpeed - ROTOR_ACCELERATION >= 0) ?
+                            (rotationalSpeed - ROTOR_ACCELERATION) : 0;
             }
         };
         animation.start();
@@ -161,15 +168,15 @@ class HeliBlade extends Group {
     private void loadAndSetImage() {
         ImageView image = new ImageView(
                 new Image("images/heliblade_2wing_transparent.png"));
-        image.setFitHeight(Game.ROTOR_LENGTH);
-        image.setFitWidth(Game.ROTOR_LENGTH);
+        image.setFitHeight(Helicopter.ROTOR_LENGTH);
+        image.setFitWidth(Helicopter.ROTOR_LENGTH);
         centerAboutOrigin();
         getChildren().add(image);
     }
 
     private void centerAboutOrigin() {
-        setTranslateX(-Game.ROTOR_LENGTH / 2);
-        setTranslateY(-Game.ROTOR_LENGTH / 2);
+        setTranslateX(-Helicopter.ROTOR_LENGTH / 2);
+        setTranslateY(-Helicopter.ROTOR_LENGTH / 2);
     }
 
     public void spinUp() {
@@ -181,7 +188,7 @@ class HeliBlade extends Group {
     }
 
     public boolean isUpToSpeed() {
-        return rotationalSpeed >= Game.ROTOR_MAX_SPEED;
+        return rotationalSpeed >= ROTOR_MAX_SPEED;
     }
 
     public boolean isRotating() {

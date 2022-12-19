@@ -4,10 +4,10 @@ import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
-import rainmaker.gameobjects.GameText;
-import rainmaker.gameobjects.Updatable;
 
 public class Pond extends GameObject implements Updatable {
+    public static final Color POND_COLOR = Color.BLUE;
+    public static final Color POND_TEXT_COLOR = Color.WHITE;
     private Circle pondCircle;
     private double maxRadius, currentRadius;
     private double maxArea, currentArea;

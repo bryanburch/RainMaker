@@ -51,8 +51,8 @@ public class BezierOval extends Group {
         double theta = Game.randomInRange(35, 55);
         while (theta <= Math.toDegrees(2 * Math.PI)) {
             endpoints.add(new Pair<>(new Point2D(
-                    majorAxisRadius * Math.cos(Math.toRadians(theta)),
-                    minorAxisRadius * Math.sin(Math.toRadians(theta))), theta));
+                majorAxisRadius * Math.cos(Math.toRadians(theta)),
+                minorAxisRadius * Math.sin(Math.toRadians(theta))), theta));
             theta += Game.randomInRange(35, 55);
         }
     }

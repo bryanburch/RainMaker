@@ -1,13 +1,13 @@
 package rainmaker.gameobjects;
 
 import javafx.scene.layout.Pane;
-import rainmaker.gameobjects.DistanceLine;
 
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
-public class DistanceLines extends Pane implements Updatable, Iterable<DistanceLine> {
+public class DistanceLines extends Pane implements Updatable,
+        Iterable<DistanceLine> {
     private List<DistanceLine> distanceLines;
     private List<DistanceLine> markedForDeletion;
 

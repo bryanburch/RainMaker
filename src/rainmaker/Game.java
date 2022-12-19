@@ -10,8 +10,6 @@ import javafx.scene.image.Image;
 import javafx.scene.layout.*;
 import javafx.scene.media.AudioClip;
 import javafx.scene.media.Media;
-import javafx.scene.paint.Color;
-import javafx.scene.paint.Paint;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.transform.Translate;
@@ -28,8 +26,6 @@ public class Game extends Pane {
     public static final int GAME_HEIGHT = 800;
 
     public static final int NUM_PONDS = 3;
-    public static final Color POND_COLOR = Color.BLUE;
-    public static final Color POND_TEXT_COLOR = Color.WHITE;
     public static final int MIN_POND_RADIUS = 5;
     public static final int MAX_POND_RADIUS = 50;
     public static final int MAX_STARTING_POND_RADIUS =
@@ -38,9 +34,6 @@ public class Game extends Pane {
 
     public static final int MIN_CLOUDS = 3;
     public static final int MAX_CLOUDS = 5;
-    public static final Color DEFAULT_CLOUD_COLOR = Color.WHITE;
-    public static final Color CLOUD_STROKE_COLOR = Color.GREY;
-    public static final Color CLOUD_TEXT_COLOR = Color.BLUE;
     public static final int MIN_CLOUD_MINOR_RADIUS = 40;
     public static final int MAX_CLOUD_MINOR_RADIUS = 60;
     public static final int MIN_CLOUD_MAJOR_RADIUS = 60;
@@ -50,28 +43,10 @@ public class Game extends Pane {
     public static final int MAX_RANGE_RAIN_MULTIPLIER = 4;
     public static final double MAX_CLOUD_SPEED_OFFSET = 0.8;
 
-    public static final double MEAN_WIND_SPEED = 0.2;
-    public static final double STD_DEV_WIND_SPEED = 0.05;
-    public static final int WIND_UPDATE_FREQ_IN_SEC = 5;
-    public static final double DISTANCE_LINE_WIDTH = 1;
-    public static final Paint DISTANCE_LINE_COLOR = Color.WHITE;
-    public static final Paint DISTANCE_LINE_TEXT_COLOR = Color.BLACK;
+    public static final double MEAN_WIND_SPEED = 0.4;
+    public static final double STD_DEV_WIND_SPEED = 0.2;
+    public static final int WIND_UPDATE_FREQ_IN_SEC = 8;
 
-    public static final Point2D HELIPAD_DIMENSIONS = new Point2D(100, 100);
-    public static final Point2D HELIPAD_POSITION =
-            new Point2D((GAME_WIDTH / 2),
-                    (GAME_HEIGHT / 25) + (HELIPAD_DIMENSIONS.getY() / 2));
-
-    public static final Point2D BLIMP_BODY_SIZE = new Point2D(200, 68);
-    public static final int BLIMP_ROTOR_SIZE = 70;
-    public static final int BLIMP_BLADE_XOFFSET = -90;
-    public static final double BLIMP_ROTOR_XSCALE_FACTOR = 0.25;
-    public static final double BLIMP_ROTOR_SPEED = 7.5;
-    public static final Color BLIMP_FUEL_TEXT_COLOR = Color.rgb(44, 235, 242);
-    public static final Point2D BLIMP_TEXT_PANE_SIZE =
-            new Point2D(BLIMP_BODY_SIZE.getX() / 2,
-                    BLIMP_BODY_SIZE.getY() / 2);
-    public static final int BLIMP_TEXT_FONT_SIZE = 16;
     public static final int REFUEL_RATE = 30;
     public static final double REFUELING_SPEED_DIFF_MARGIN = 0.1;
     public static final double BLIMP_MIN_SPEED = 0.7;
@@ -81,22 +56,12 @@ public class Game extends Pane {
     public static final double BLIMP_MIN_FUEL = 5000;
     public static final double BLIMP_MAX_FUEL = 10000;
     public static final int BLIMP_RESPAWN_ATTEMPT_FREQ_SEC = 5;
-    public static final int BLIMP_RESPAWN_CHANCE_PERCENT = 18;
+    public static final int BLIMP_RESPAWN_CHANCE_PERCENT = 16;
 
-    public static final Color FUEL_GAUGE_COLOR = Color.MAROON;
-    public static final int HELIBODY_SIZE = 75;
-    public static final int ROTOR_LENGTH = 80;
     public static final int HELICOPTER_MIN_SPEED = -2;
     public static final int HELICOPTER_MAX_SPEED = 10;
-    public static final int ROTOR_MIN_SPEED = 0;
-    public static final int ROTOR_MAX_SPEED = 15;
-    public static final double ROTOR_ACCELERATION = 0.075;
     public static final int STARTING_FUEL = 25000;
     public static final int BASE_FUEL_CONSUMPTION_RATE = 5;
-
-    public static final Color BOUND_FILL = Color.TRANSPARENT;
-    public static final Color BOUND_STROKE = Color.YELLOW;
-    public static final int BOUND_STROKE_WIDTH = 1;
 
     public static final Media HELICOPTER_STARTING_MEDIA = new Media(
             SoundPlayer.class.getResource(
@@ -191,7 +156,7 @@ public class Game extends Pane {
         getChildren().addAll(helipad, ponds, clouds, blimps, helicopter,
                 bounds, distanceLines);
 
-        makeGameLoop();
+        configAndStartGameLoop();
         loop.start();
     }
 
@@ -212,7 +177,7 @@ public class Game extends Pane {
                 helipad.getBoundsInParent().getWidth(),
                 helipad.getBoundsInParent().getHeight())));
         bounds.add(new CircleBound(helicopter,
-                new Circle(ROTOR_LENGTH / 2)));
+                new Circle(Helicopter.ROTOR_LENGTH / 2)));
     }
 
     private void initClouds() {
@@ -227,10 +192,8 @@ public class Game extends Pane {
             ponds.add(makePond());
     }
 
-    // TODO: factory method for helicopter, helipad, cloud, etc. defined in
-    //  their own class (like the way blimp does it, see below)
     private static Helicopter makeHelicopter() {
-        Helicopter helicopter = new Helicopter(HELIPAD_POSITION,
+        Helicopter helicopter = new Helicopter(Helipad.HELIPAD_POSITION,
                 STARTING_FUEL);
         return helicopter;
     }
@@ -246,7 +209,8 @@ public class Game extends Pane {
     }
 
     private static Helipad makeHelipad() {
-        Helipad helipad = new Helipad(HELIPAD_POSITION, HELIPAD_DIMENSIONS);
+        Helipad helipad = new Helipad(Helipad.HELIPAD_POSITION,
+                Helipad.HELIPAD_DIMENSIONS);
         return helipad;
     }
 
@@ -298,13 +262,13 @@ public class Game extends Pane {
                         new Point2D(GAME_WIDTH, GAME_HEIGHT));
         Pond pond = new Pond(position, MAX_POND_RADIUS,
                 randomInRange(MIN_POND_RADIUS, MAX_STARTING_POND_RADIUS),
-                POND_COLOR, POND_TEXT_COLOR);
+                Pond.POND_COLOR, Pond.POND_TEXT_COLOR);
         pond.setTranslateX(position.getX());
         pond.setTranslateY(position.getY());
         return pond;
     }
 
-    private void makeGameLoop() {
+    private void configAndStartGameLoop() {
         AnimationTimer loop = new AnimationTimer() {
             private double old = -1;
             private double timeSinceLastRain = 0;
@@ -372,7 +336,7 @@ public class Game extends Pane {
                 boolean isTimeToTryBlimpSpawn = timeSinceBlimpRespawnTry
                         >= BLIMP_RESPAWN_ATTEMPT_FREQ_SEC;
                 if (isTimeToTryBlimpSpawn) {
-                    int random = (int) randomInRange(0, 100);
+                    int random = (int) randomInRange(0, HUNDRED_PERCENT);
                     if (random <= BLIMP_RESPAWN_CHANCE_PERCENT)
                         spawnBlimp();
                     timeSinceBlimpRespawnTry = 0;
@@ -411,7 +375,8 @@ public class Game extends Pane {
                 if (clouds.getNumberOf() < MIN_CLOUDS)
                     respawnCloud();
                 else if (clouds.getNumberOf() < MAX_CLOUDS) {
-                    int randomNumIn100 = (int) (Math.random() * 100);
+                    int randomNumIn100 =
+                            (int) (Math.random() * HUNDRED_PERCENT);
                     if (randomNumIn100 % 2 == 0)
                         respawnCloud();
                 }

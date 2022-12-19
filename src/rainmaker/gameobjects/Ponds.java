@@ -1,7 +1,6 @@
 package rainmaker.gameobjects;
 
 import javafx.scene.layout.Pane;
-import rainmaker.gameobjects.Updatable;
 
 import java.util.Iterator;
 import java.util.LinkedList;

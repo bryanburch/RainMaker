@@ -1,11 +1,6 @@
 package rainmaker.gameobjects;
 
 import javafx.scene.layout.Pane;
-import rainmaker.gameobjects.CircleBound;
-import rainmaker.gameobjects.RectangleBound;
-import rainmaker.gameobjects.Updatable;
-import rainmaker.gameobjects.Bound;
-import rainmaker.gameobjects.GameObject;
 
 import java.util.Iterator;
 import java.util.LinkedList;
