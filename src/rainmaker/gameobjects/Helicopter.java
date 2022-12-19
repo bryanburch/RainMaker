@@ -27,7 +27,7 @@ public class Helicopter extends GameObject implements Updatable {
 
         getTransforms().add(new Translate(initialPosition.getX(),
                 initialPosition.getY()));
-        state = new OffHeliState(fuel);
+        state = new OffHeliState(fuel, 0);
     }
 
     private void makeAndAddHelicopterShape() {

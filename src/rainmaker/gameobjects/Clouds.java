@@ -1,9 +1,6 @@
 package rainmaker.gameobjects;
 
 import javafx.scene.layout.Pane;
-import rainmaker.gameobjects.DeadCloud;
-import rainmaker.gameobjects.Updatable;
-import rainmaker.gameobjects.Wind;
 
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -42,7 +39,10 @@ public class Clouds extends Pane implements Updatable, Iterable<Cloud> {
 
     private void tryDeletingDeadClouds() {
         if (markedForDeletion.size() > 0) {
-            markedForDeletion.forEach(cloud -> getChildren().remove(cloud));
+            markedForDeletion.forEach(cloud -> {
+                getChildren().remove(cloud);
+                wind.removeObserver(cloud);
+            });
             clouds.removeAll(markedForDeletion);
             markedForDeletion.clear();
         }

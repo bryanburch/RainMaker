@@ -1,9 +1,7 @@
 package rainmaker.gameobjects;
 
-import javafx.geometry.Point2D;
 import javafx.scene.media.AudioClip;
 import javafx.scene.media.MediaPlayer;
-import javafx.scene.transform.Translate;
 import rainmaker.Game;
 
 public interface BlimpState {

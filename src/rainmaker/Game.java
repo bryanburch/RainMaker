@@ -48,9 +48,10 @@ public class Game extends Pane {
     public static final double RAIN_FREQUENCY = 0.6;
     public static final int MIN_CLOUD_SATURATION_TO_RAIN = 30;
     public static final int MAX_RANGE_RAIN_MULTIPLIER = 4;
+    public static final double MAX_CLOUD_SPEED_OFFSET = 0.8;
 
-    public static final double MEAN_WIND_SPEED = 0.4;
-    public static final double STD_DEV_WIND_SPEED = 0.15;
+    public static final double MEAN_WIND_SPEED = 0.2;
+    public static final double STD_DEV_WIND_SPEED = 0.05;
     public static final int WIND_UPDATE_FREQ_IN_SEC = 5;
     public static final double DISTANCE_LINE_WIDTH = 1;
     public static final Paint DISTANCE_LINE_COLOR = Color.WHITE;
@@ -177,10 +178,9 @@ public class Game extends Pane {
     }
 
     private void init() {
-        wind = new Wind();
-
         getChildren().clear();
         initPonds();
+        wind = new Wind();
         initClouds();
         blimps = new Blimps();
         helipad = makeHelipad();
@@ -191,15 +191,8 @@ public class Game extends Pane {
         getChildren().addAll(helipad, ponds, clouds, blimps, helicopter,
                 bounds, distanceLines);
 
-        initWind();
         makeGameLoop();
         loop.start();
-    }
-
-    private void initWind() {
-        for (Cloud c : clouds) {
-            wind.addObserver(c);
-        }
     }
 
     private void initDistanceLines() {
@@ -257,16 +250,17 @@ public class Game extends Pane {
         return helipad;
     }
 
-    private static Cloud makeCloud() {
+    private Cloud makeCloud() {
         Point2D position = randomPositionInBound(
                 new Point2D(0, (GAME_HEIGHT * (0.33))),
                 new Point2D(GAME_WIDTH, GAME_HEIGHT));
         Cloud cloud = new Cloud(position,
                 randomInRange(MIN_CLOUD_MAJOR_RADIUS, MAX_CLOUD_MAJOR_RADIUS),
                 randomInRange(MIN_CLOUD_MINOR_RADIUS, MAX_CLOUD_MINOR_RADIUS),
-                MEAN_WIND_SPEED, randomInRange(0, STD_DEV_WIND_SPEED));
+                MEAN_WIND_SPEED, randomInRange(0, MAX_CLOUD_SPEED_OFFSET));
         cloud.getTransforms().add(
                 new Translate(position.getX(), position.getY()));
+        wind.addObserver(cloud);
         return cloud;
     }
 
@@ -278,7 +272,7 @@ public class Game extends Pane {
         Cloud cloud = new Cloud(position,
                 randomInRange(MIN_CLOUD_MAJOR_RADIUS, MAX_CLOUD_MAJOR_RADIUS),
                 randomInRange(MIN_CLOUD_MINOR_RADIUS, MAX_CLOUD_MINOR_RADIUS),
-                MEAN_WIND_SPEED, randomInRange(0, STD_DEV_WIND_SPEED));
+                MEAN_WIND_SPEED, randomInRange(0, MAX_CLOUD_SPEED_OFFSET));
         cloud.getTransforms().add(
                 new Translate(position.getX(), position.getY()));
         clouds.add(cloud);
@@ -322,8 +316,7 @@ public class Game extends Pane {
                 double delta = calculateDelta(now);
                 incrementTimers(delta);
 
-                markForDeletionBoundsOfDeadObjects();
-                markForDeletionDistanceLinesOfDeadClouds();
+                cleanupDeadObjects();
                 updateGameObjects();
                 updateWind();
                 trySpawningBlimp();
@@ -334,6 +327,11 @@ public class Game extends Pane {
 
                 showLoseDialogIfConditionsMet();
                 showWinDialogIfConditionsMet();
+            }
+
+            private void cleanupDeadObjects() {
+                markForDeletionBoundsOfDeadObjects();
+                markForDeletionDistanceLinesOfDeadClouds();
             }
 
             private void incrementTimers(double delta) {

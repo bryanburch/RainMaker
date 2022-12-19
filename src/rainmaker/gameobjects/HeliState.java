@@ -32,15 +32,17 @@ public interface HeliState {
 
 class OffHeliState implements HeliState {
     private double fuel;
+    private double heading;
 
-    public OffHeliState(double fuel) {
+    public OffHeliState(double fuel, double heading) {
         this.fuel = fuel;
+        this.heading = heading;
     }
 
     @Override
     public HeliState toggleIgnition(HeliBlade heliBlade) {
         heliBlade.spinUp();
-        return new StartingHeliState(fuel);
+        return new StartingHeliState(fuel, heading);
     }
 
     @Override
@@ -80,10 +82,12 @@ class OffHeliState implements HeliState {
 
 class StartingHeliState implements HeliState {
     private double fuel;
+    private double heading;
     private MediaPlayer helicopterStartup;
 
-    public StartingHeliState(double fuel) {
+    public StartingHeliState(double fuel, double heading) {
         this.fuel = fuel;
+        this.heading = heading;
         configAndPlayAudio();
     }
 
@@ -96,7 +100,7 @@ class StartingHeliState implements HeliState {
     @Override
     public HeliState toggleIgnition(HeliBlade heliBlade) {
         heliBlade.spinDown();
-        return new StoppingHeliState(fuel);
+        return new StoppingHeliState(fuel, heading);
     }
 
     @Override
@@ -105,7 +109,7 @@ class StartingHeliState implements HeliState {
         updateFuelGaugeText(fuelGauge);
         if (heliBlade.isUpToSpeed()) {
             helicopterStartup.stop();
-            return new ReadyHeliState(fuel);
+            return new ReadyHeliState(fuel, heading);
         }
         return this;
     }
@@ -153,10 +157,10 @@ class ReadyHeliState implements HeliState {
     private double speed;
     private MediaPlayer helicopterHum;
 
-    public ReadyHeliState(double fuel) {
+    public ReadyHeliState(double fuel, double heading) {
         this.fuel = fuel;
         speed = 0;
-        heading = 0;
+        this.heading = heading;
         configureAudio();
     }
 
@@ -172,7 +176,7 @@ class ReadyHeliState implements HeliState {
     public HeliState toggleIgnition(HeliBlade heliBlade) {
         heliBlade.spinDown();
         helicopterHum.stop();
-        return new StoppingHeliState(fuel);
+        return new StoppingHeliState(fuel, heading);
     }
 
     @Override
@@ -252,10 +256,12 @@ class ReadyHeliState implements HeliState {
 
 class StoppingHeliState implements HeliState {
     private double fuel;
+    private double heading;
     private MediaPlayer helicopterShutdown;
 
-    public StoppingHeliState(double fuel) {
+    public StoppingHeliState(double fuel, double heading) {
         this.fuel = fuel;
+        this.heading = heading;
         configAndPlayAudio();
     }
 
@@ -269,7 +275,7 @@ class StoppingHeliState implements HeliState {
     public HeliState toggleIgnition(HeliBlade heliBlade) {
         heliBlade.spinUp();
         helicopterShutdown.stop();
-        return new StartingHeliState(fuel);
+        return new StartingHeliState(fuel, heading);
     }
 
     @Override
@@ -277,7 +283,7 @@ class StoppingHeliState implements HeliState {
                             GameText fuelGauge) {
         if (!heliBlade.isRotating()) {
             helicopterShutdown.stop();
-            return new OffHeliState(fuel);
+            return new OffHeliState(fuel, heading);
         }
         return this;
     }

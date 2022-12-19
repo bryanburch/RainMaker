@@ -8,7 +8,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 
-// TODO: remove observers isn't being called...
 public class Wind implements Updatable {
     private double speed;
     private Random random;
@@ -46,9 +45,8 @@ public class Wind implements Updatable {
     }
 
     private void notifyObservers() {
-        for (TransientGameObject t : observers) {
+        for (TransientGameObject t : observers)
             t.impartSpeed(speed);
-        }
     }
 
     public void stopAudio() {
