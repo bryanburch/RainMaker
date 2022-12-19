@@ -24,7 +24,9 @@ public class Blimp extends TransientGameObject implements Updatable {
 
     public static Blimp makeBlimp() {
         Blimp b = new Blimp(
-                new Point2D(0, Game.randomInRange(0, Game.GAME_HEIGHT)),
+                new Point2D(- BlimpBody.BLIMP_BODY_SIZE.getX() / 2,
+                        Game.randomInRange(0,
+                        Game.GAME_HEIGHT)),
                 Game.randomInRange(Game.BLIMP_MIN_SPEED, Game.BLIMP_MAX_SPEED),
                 Game.randomInRange(Game.BLIMP_MIN_SPEED_OFFSET,
                         Game.BLIMP_MAX_SPEED_OFFSET),

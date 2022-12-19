@@ -8,6 +8,10 @@ public class Cloud extends TransientGameObject implements Updatable {
     public static final Color DEFAULT_CLOUD_COLOR = Color.WHITE;
     public static final Color CLOUD_STROKE_COLOR = Color.GREY;
     public static final Color CLOUD_TEXT_COLOR = Color.BLUE;
+    public static final double CONTROL_POINT_STRENGTH = 1.2;
+    public static final double MIN_CONTROL_DEGREE_SEPARATION = 30;
+    public static final double MAX_CONTROL_DEGREE_SEPARATION = 60;
+
     private BezierOval cloudShape;
     private GameText percentSaturatedText;
     private int seedPercentage;
@@ -17,7 +21,9 @@ public class Cloud extends TransientGameObject implements Updatable {
                  double minorAxisRadius, double speed, double speedOffset) {
         super(initialPosition, speed, speedOffset);
         cloudShape = new BezierOval(majorAxisRadius, minorAxisRadius,
-                DEFAULT_CLOUD_COLOR, CLOUD_STROKE_COLOR);
+                DEFAULT_CLOUD_COLOR, CLOUD_STROKE_COLOR,
+                CONTROL_POINT_STRENGTH, MIN_CONTROL_DEGREE_SEPARATION,
+                MAX_CONTROL_DEGREE_SEPARATION);
 
         seedPercentage = 0;
         makePercentSaturatedText(CLOUD_TEXT_COLOR);

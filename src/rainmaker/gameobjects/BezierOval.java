@@ -13,18 +13,23 @@ import java.util.LinkedList;
 import java.util.List;
 
 public class BezierOval extends Group {
-    public static final double CONTROL_POINT_STRENGTH = 1.25;
-
     private double majorAxisRadius, minorAxisRadius;
     private List<Pair<Point2D, Double>> endpoints;
     private Ellipse baseOval, controlPointsOval;
     private List<Point2D> controlPoints;
+    private double controlPointStrength;
+    private double minControlDegreeSeparation, maxControlDegreeSeparation;
     private Color fill, stroke;
 
     public BezierOval(double majorAxisRadius, double minorAxisRadius,
-                      Color fill, Color stroke) {
+                      Color fill, Color stroke, double controlStrength,
+                      double minControlDegreeSeparation,
+                      double maxControlDegreeSeparation) {
         this.majorAxisRadius = majorAxisRadius;
         this.minorAxisRadius = minorAxisRadius;
+        this.controlPointStrength = controlStrength;
+        this.minControlDegreeSeparation = minControlDegreeSeparation;
+        this.maxControlDegreeSeparation = maxControlDegreeSeparation;
         baseOval = new Ellipse(majorAxisRadius, minorAxisRadius);
         this.fill = fill;
         this.stroke = stroke;
@@ -42,18 +47,20 @@ public class BezierOval extends Group {
 
     private void makeControlPointOval() {
         controlPointsOval = new Ellipse(
-                majorAxisRadius * CONTROL_POINT_STRENGTH,
-                minorAxisRadius * CONTROL_POINT_STRENGTH);
+                majorAxisRadius * controlPointStrength,
+                minorAxisRadius * controlPointStrength);
     }
 
     private void setEndPoints() {
         endpoints = new LinkedList<>();
-        double theta = Game.randomInRange(35, 55);
+        double theta = Game.randomInRange(minControlDegreeSeparation,
+                maxControlDegreeSeparation);
         while (theta <= Math.toDegrees(2 * Math.PI)) {
             endpoints.add(new Pair<>(new Point2D(
                 majorAxisRadius * Math.cos(Math.toRadians(theta)),
                 minorAxisRadius * Math.sin(Math.toRadians(theta))), theta));
-            theta += Game.randomInRange(35, 55);
+            theta += Game.randomInRange(minControlDegreeSeparation,
+                    maxControlDegreeSeparation);
         }
     }
 
@@ -97,6 +104,34 @@ public class BezierOval extends Group {
         }
     }
 
+    public void growBaseOvalTo(double majorAxisRadius,
+                               double minorAxisRadius) {
+        baseOval.setRadiusX(majorAxisRadius);
+        baseOval.setRadiusY(minorAxisRadius);
+        this.majorAxisRadius = majorAxisRadius;
+        this.minorAxisRadius = minorAxisRadius;
+        computeNewEndpointLocations();
+        setControlPoints();
+        clearBezierCurves();
+        makeBezierCurves();
+    }
+
+    private void computeNewEndpointLocations() {
+        List<Pair<Point2D, Double>> newEndpoints = new LinkedList<>();
+        for (Pair<Point2D, Double> endpoint : endpoints) {
+            double theta = endpoint.getValue();
+            newEndpoints.add(new Pair<>(new Point2D(
+                    majorAxisRadius * Math.cos(Math.toRadians(theta)),
+                    minorAxisRadius * Math.sin(Math.toRadians(theta))),
+                    theta));
+        }
+        endpoints = newEndpoints;
+    }
+
+    private void clearBezierCurves() {
+        getChildren().removeIf(shape -> (shape instanceof QuadCurve));
+    }
+
     public Color getFill() {
         return fill;
     }
@@ -110,7 +145,7 @@ public class BezierOval extends Group {
         return 2 * controlPointsOval.getRadiusX();
     }
 
-    public double getHeight() {
-        return 2 * controlPointsOval.getRadiusY();
+    public double getMajorAxisRadius() {
+        return majorAxisRadius;
     }
 }

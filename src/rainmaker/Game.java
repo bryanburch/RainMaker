@@ -44,7 +44,7 @@ public class Game extends Pane {
     public static final double MAX_CLOUD_SPEED_OFFSET = 0.8;
 
     public static final double MEAN_WIND_SPEED = 0.4;
-    public static final double STD_DEV_WIND_SPEED = 0.2;
+    public static final double STD_DEV_WIND_SPEED = 0.1;
     public static final int WIND_UPDATE_FREQ_IN_SEC = 8;
 
     public static final int REFUEL_RATE = 30;
@@ -93,6 +93,7 @@ public class Game extends Pane {
 
     public static final int INVERT_AXIS = -1;
     public static final double NANOS_PER_SEC = 1e9;
+    public static final double MAP_BOTTON_THIRD = 0.33;
     public static final int HUNDRED_PERCENT = 100;
     public static final int MAX_RGB_INT = 255;
     public static final double EFFECTIVELY_ZERO = 1e-3;
@@ -216,7 +217,7 @@ public class Game extends Pane {
 
     private Cloud makeCloud() {
         Point2D position = randomPositionInBound(
-                new Point2D(0, (GAME_HEIGHT * (0.33))),
+                new Point2D(0, (GAME_HEIGHT * (MAP_BOTTON_THIRD))),
                 new Point2D(GAME_WIDTH, GAME_HEIGHT));
         Cloud cloud = new Cloud(position,
                 randomInRange(MIN_CLOUD_MAJOR_RADIUS, MAX_CLOUD_MAJOR_RADIUS),
@@ -258,7 +259,8 @@ public class Game extends Pane {
 
     private static Pond makePond() {
         Point2D position =
-                randomPositionInBound(new Point2D(0, (GAME_HEIGHT * (0.33))),
+                randomPositionInBound(new Point2D(0,
+                                (GAME_HEIGHT * MAP_BOTTON_THIRD)),
                         new Point2D(GAME_WIDTH, GAME_HEIGHT));
         Pond pond = new Pond(position, MAX_POND_RADIUS,
                 randomInRange(MIN_POND_RADIUS, MAX_STARTING_POND_RADIUS),

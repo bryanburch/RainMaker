@@ -3,12 +3,16 @@ package rainmaker.gameobjects;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Circle;
+import rainmaker.Game;
 
 public class Pond extends GameObject implements Updatable {
     public static final Color POND_COLOR = Color.BLUE;
     public static final Color POND_TEXT_COLOR = Color.WHITE;
-    private Circle pondCircle;
+    public static final double MIN_CONTROL_DEGREE_SEPARATION = 60;
+    public static final double MAX_CONTROL_DEGREE_SEPARATION = 90;
+    public static final double ONE_PERCENT = 0.01;
+
+    private BezierOval pondShape;
     private double maxRadius, currentRadius;
     private double maxArea, currentArea;
     private GameText percentFullText;
@@ -21,15 +25,19 @@ public class Pond extends GameObject implements Updatable {
         maxArea = Math.PI * Math.pow(maxRadius, 2);
         this.currentRadius = currentRadius;
         currentArea = Math.PI * Math.pow(currentRadius, 2);
-        pondCircle = new Circle(currentRadius, fill);
+        double controlStrength = (maxRadius / currentRadius);
+        pondShape = new BezierOval(currentRadius, currentRadius, fill,
+                Color.TRANSPARENT, controlStrength,
+                MIN_CONTROL_DEGREE_SEPARATION,
+                MAX_CONTROL_DEGREE_SEPARATION);
 
         makePercentFullText(textFill);
 
-        this.getChildren().addAll(pondCircle, percentFullText);
+        getChildren().addAll(pondShape, percentFullText);
     }
 
     private void makePercentFullText(Color textFill) {
-        percentFull = (int) ((currentArea / maxArea) * 100);
+        percentFull = (int) ((currentArea / maxArea) * Game.HUNDRED_PERCENT);
         percentFullText = new GameText(percentFull + "%", textFill);
 
         Bounds fpBounds = percentFullText.getBoundsInParent();
@@ -41,19 +49,19 @@ public class Pond extends GameObject implements Updatable {
 
     @Override
     public void update() {
-        if (pondCircle.getRadius() != currentRadius) {
-            pondCircle.setRadius(currentRadius);
+        if (pondShape.getMajorAxisRadius() != currentRadius) {
+            pondShape.growBaseOvalTo(currentRadius, currentRadius);
             percentFullText.setText(percentFull + "%");
         }
     }
 
     public void fillByIncrement(double multiplier) {
-        currentArea += (maxArea * 0.01) * multiplier;
+        currentArea += (maxArea * ONE_PERCENT) * multiplier;
         if (currentArea > maxArea)
             currentArea = maxArea;
 
         currentRadius = Math.sqrt((currentArea / Math.PI));
-        percentFull = (int) (currentArea / maxArea * 100);
+        percentFull = (int) (currentArea / maxArea * Game.HUNDRED_PERCENT);
     }
 
     public int getPercentFull() {
